@@ -10,6 +10,7 @@ The git scripts work on `~/GitHub` by default; if that folder does not exist, th
 | [`git_pull_all.sh`](git_pull_all.sh) | Pulls every repository | Yes, asks before anything destructive |
 | [`git_clone_all.sh`](git_clone_all.sh) | Clones every repository of a GitHub user that is not downloaded yet | Only adds new folders |
 | [`hwrt.sh`](hwrt.sh) | Live view of RAM, CPU speed, GPU, temperatures and fans; beeps when RAM is low | No |
+| [`hwrt_pi.sh`](hwrt_pi.sh) | The same for a Raspberry Pi, plus the power supply (under-voltage, throttling) | No |
 
 ## git_status_all.sh
 
@@ -85,6 +86,27 @@ Every 5 seconds (updating in place, without flashing) shows the available RAM (M
 on machines with an NVIDIA card), all temperatures and the fan speeds. When less
 than 3000 MB of RAM is available it plays a tone with `speaker-test`.
 Temperatures and fans come from `lm-sensors` (`sudo apt install lm-sensors`).
+
+## hwrt_pi.sh
+
+```bash
+hwrt_pi.sh  # Ctrl+C to quit
+```
+
+`hwrt.sh` for a Raspberry Pi, in the same layout:
+
+- available RAM (it beeps below 10% of the RAM, as a Pi has 1 to 16 GB; the
+  terminal bell too, since a Pi often has no speakers)
+- CPU speed, cores and model; GPU (VideoCore) speed and memory
+- the chip temperature (it slows down at 80°C, stops at 85°C), on a Pi 5 the
+  power chip too, the core voltage
+- **Power**: OK, or what is wrong now (under-voltage, speed capped, throttled,
+  temperature limit) and what has happened since the Pi started. Under-voltage
+  means a weak power supply or cable, the most common cause of a slow Pi.
+- the fan speed (the official Pi 5 fan, or any fan the kernel knows)
+
+The Pi lines need `vcgencmd` (on Raspberry Pi OS; the user must be in the
+`video` group). Without it the script still shows RAM, CPU, temperatures and fans.
 
 ## New computer
 
