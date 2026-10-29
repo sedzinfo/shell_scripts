@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Clones every repository of a GitHub user into ~/GitHub (or the folder given).
 # Repositories that are already there are skipped, so it is safe to run again.
-#   clone_all.sh [folder] [user]
+#   git_clone_all.sh [folder] [user]
 # Private repositories are included only if a token is set:
-#   GITHUB_TOKEN=ghp_... clone_all.sh
+#   GITHUB_TOKEN=ghp_... git_clone_all.sh
 # Needs curl and jq.
 
 root="${1:-$HOME/GitHub}"

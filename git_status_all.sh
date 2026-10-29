@@ -2,7 +2,7 @@
 # One line per git repository in ~/GitHub (or the folder given): what is not yet
 # on GitHub. Nothing is changed; the remote branches are fetched first so the
 # counts are up to date (add --no-fetch to skip that, e.g. without internet).
-#   status_all.sh [folder] [--no-fetch]
+#   git_status_all.sh [folder] [--no-fetch]
 
 root="$HOME/GitHub"; fetch=1
 for arg in "$@"; do
