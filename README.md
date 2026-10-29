@@ -18,6 +18,7 @@ NVIDIA's are never offered.
 | [`hwrt.sh`](hwrt.sh) | Live view of RAM, CPU speed, GPU, temperatures and fans; beeps when RAM is low | No |
 | [`hwrt_pi.sh`](hwrt_pi.sh) | The same for a Raspberry Pi, plus the power supply (under-voltage, throttling) | No |
 | [`shiny_update_manifests.sh`](shiny_update_manifests.sh) | Regenerates `manifest.json` of the Shiny apps for Posit Connect | Rewrites `manifest.json` only |
+| [`r_install_packages.sh`](r_install_packages.sh) | Installs the system and R packages a repository needs | Installs, after asking |
 
 ## git_status_all.sh
 
@@ -139,6 +140,29 @@ are listed but not touched. Nothing is committed: commit and push the updated
 
 The versions written are the ones installed on the computer it runs on, so run
 it where the apps work.
+
+## r_install_packages.sh
+
+```bash
+r_install_packages.sh ~/GitHub/rwf     # or with no folder: the current one
+```
+
+Installs what the R code of a repository needs, in three steps, each one
+listed first and asked (`y`) before anything is installed:
+
+1. **System packages** (apt) that the R packages need to compile, such as
+   `libcurl4-openssl-dev`, `libxml2-dev` or `default-jdk` (for rJava).
+   Worked out by the R package `pak`; on Linux Mint it uses the Ubuntu version
+   Mint is built on. A Java or pandoc that is already there counts as installed.
+2. **R packages** not installed yet, into your own R library (no sudo):
+   - for an R package (a `DESCRIPTION`, also one folder down as in `rwf/rwf`):
+     its Depends, Imports, LinkingTo and Suggests
+   - otherwise (analyses, Quarto sites such as `vignettes`): the packages the
+     `.R`, `.Rmd` and `.qmd` files load
+3. **The repository's own package** (for example rwf itself).
+
+Packages already installed are not touched or upgraded. If R, the compilers or
+`pak` are missing, it offers to install them first.
 
 ## New computer
 
