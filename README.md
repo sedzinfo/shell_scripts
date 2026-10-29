@@ -4,6 +4,12 @@ Small bash scripts: looking after many git repositories at once, and keeping an 
 The git scripts work on `~/GitHub` by default; if that folder does not exist, they ask for one
 (Tab completes paths, `~` works, an empty answer quits).
 
+When a program a script needs is missing (`lm-sensors`, `alsa-utils`, `pciutils`,
+`curl`, `jq`), the script says what it is for and asks before installing it with
+`sudo apt install`. Answer no and it goes on with what it can (`git_clone_all.sh`
+stops, since it cannot work without `curl` and `jq`). Graphics drivers such as
+NVIDIA's are never offered.
+
 | Script | What it does | Changes anything? |
 |---|---|---|
 | [`git_status_all.sh`](git_status_all.sh) | One line per repository: clean, or what is not yet on GitHub | No |
@@ -11,6 +17,7 @@ The git scripts work on `~/GitHub` by default; if that folder does not exist, th
 | [`git_clone_all.sh`](git_clone_all.sh) | Clones every repository of a GitHub user that is not downloaded yet | Only adds new folders |
 | [`hwrt.sh`](hwrt.sh) | Live view of RAM, CPU speed, GPU, temperatures and fans; beeps when RAM is low | No |
 | [`hwrt_pi.sh`](hwrt_pi.sh) | The same for a Raspberry Pi, plus the power supply (under-voltage, throttling) | No |
+| [`shiny_update_manifests.sh`](shiny_update_manifests.sh) | Regenerates `manifest.json` of the Shiny apps for Posit Connect | Rewrites `manifest.json` only |
 
 ## git_status_all.sh
 
@@ -107,6 +114,31 @@ hwrt_pi.sh  # Ctrl+C to quit
 
 The Pi lines need `vcgencmd` (on Raspberry Pi OS; the user must be in the
 `video` group). Without it the script still shows RAM, CPU, temperatures and fans.
+
+## shiny_update_manifests.sh
+
+```bash
+shiny_update_manifests.sh              # every app in ~/GitHub that has a manifest.json
+shiny_update_manifests.sh golemirt     # only the apps named (also makes a first manifest)
+ROOT=~/Projects shiny_update_manifests.sh
+```
+
+Posit Connect (Cloud) installs an app from its `manifest.json`: the list of R
+packages, with their versions, that the app uses. After updating packages in R,
+the manifest is out of date. For each app (a folder with `app.R`) this runs
+
+```r
+rsconnect::writeManifest(appDir = ".", appPrimaryDoc = "app.R")
+```
+
+and says whether the manifest was **updated** or **unchanged**. It fails for an
+app that uses a package not installed here; the end of R's message shows which
+one (install it in R and run again). Apps with an `app.R` but no `manifest.json`
+are listed but not touched. Nothing is committed: commit and push the updated
+`manifest.json` files for Posit Connect to use them.
+
+The versions written are the ones installed on the computer it runs on, so run
+it where the apps work.
 
 ## New computer
 
