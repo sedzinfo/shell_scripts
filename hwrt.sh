@@ -43,6 +43,36 @@ intel_busy() {
 	idle_before=$idle_now; time_before=$time_now
 }
 
+# offers to install the programs this script needs, when they are missing.
+# Each argument is program:package:what it is for. It only asks (never installs
+# by itself), only once, and only where apt exists; with no, the script goes on
+# and shows what it can.
+check_packages() {
+	local entry program package purpose answer packages=() lines=()
+	for entry in "$@"; do
+		IFS=: read -r program package purpose <<< "$entry"
+		if ! command -v "$program" > /dev/null; then
+			packages+=("$package")
+			lines+=("$(printf '%-14s %-26s package %s' "$program" "($purpose)" "$package")")
+		fi
+	done
+	[ ${#packages[@]} -eq 0 ] && return 0
+	echo "Missing:"
+	printf '  %s\n' "${lines[@]}"
+	if command -v apt-get > /dev/null && [ -t 0 ]; then
+		read -r -p "Install them now with sudo apt install ${packages[*]}? [y/N]: " answer
+		if [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]; then
+			sudo apt install -y "${packages[@]}"
+		fi
+	else
+		echo "Install them with the package manager of this system: ${packages[*]}"
+	fi
+}
+
+check_packages 'sensors:lm-sensors:temperatures and fans' \
+	'speaker-test:alsa-utils:low-RAM alarm' \
+	'lspci:pciutils:the name of the GPU'
+
 # the screen is cleared only once; after that each refresh is written over the
 # previous one, so it does not flash
 tput civis                                  # hide the cursor
@@ -62,7 +92,7 @@ do
 	if command -v nvidia-smi > /dev/null; then
 		gpu_status=$(nvidia-smi 2> /dev/null | grep % | awk '{print $3}')
 	fi
-	sensors_output=$(sensors)
+	sensors_output=$(sensors 2> /dev/null)
 	cpu_temperature=$(sensors_table '°C' <<< "$sensors_output")
 	cpu_fan=$(sensors_table 'RPM' <<< "$sensors_output")
 	[ -n "$intel_gpu" ] && intel_busy
@@ -97,7 +127,7 @@ do
 
 	if [[ "$available" -lt 3000 ]]
 	then
-		speaker-test -t sine -f 20000 -l 1
+		speaker-test -t sine -f 20000 -l 1 2> /dev/null
 	fi
 	sleep 5
 done

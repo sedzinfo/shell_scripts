@@ -49,6 +49,34 @@ power_status() {
 	[ ${#before[@]} -gt 0 ] && row "" "" "since start: $(IFS=,; echo "${before[*]}" | sed 's/,/, /g')"
 }
 
+# offers to install the programs this script needs, when they are missing.
+# Each argument is program:package:what it is for. It only asks (never installs
+# by itself), only once, and only where apt exists; with no, the script goes on
+# and shows what it can.
+check_packages() {
+	local entry program package purpose answer packages=() lines=()
+	for entry in "$@"; do
+		IFS=: read -r program package purpose <<< "$entry"
+		if ! command -v "$program" > /dev/null; then
+			packages+=("$package")
+			lines+=("$(printf '%-14s %-26s package %s' "$program" "($purpose)" "$package")")
+		fi
+	done
+	[ ${#packages[@]} -eq 0 ] && return 0
+	echo "Missing:"
+	printf '  %s\n' "${lines[@]}"
+	if command -v apt-get > /dev/null && [ -t 0 ]; then
+		read -r -p "Install them now with sudo apt install ${packages[*]}? [y/N]: " answer
+		if [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]; then
+			sudo apt install -y "${packages[@]}"
+		fi
+	else
+		echo "Install them with the package manager of this system: ${packages[*]}"
+	fi
+}
+
+check_packages 'speaker-test:alsa-utils:low-RAM alarm'
+
 # the screen is cleared only once; after that each refresh is written over the
 # previous one, so it does not flash
 tput civis                                  # hide the cursor
