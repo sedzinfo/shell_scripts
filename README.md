@@ -2,7 +2,8 @@
 
 Small bash scripts: looking after many git repositories at once, and keeping an eye on the machine.
 The git scripts work on `~/GitHub` by default; if that folder does not exist, they ask for one
-(Tab completes paths, `~` works, an empty answer quits).
+(Tab completes paths, `~` works, an empty answer quits). Each one except `hwrt_pi.sh` also
+comes as a PowerShell script for Windows (`.ps1`); see [Windows](#windows).
 
 When a program a script needs is missing (`lm-sensors`, `alsa-utils`, `pciutils`,
 `curl`, `jq`), the script says what it is for and asks before installing it with
@@ -200,6 +201,48 @@ GitHub, as it needs GitHub to check the repositories. Running `--check` a few
 days before shows what still needs a commit or a push; the exit code is 1
 while any repository is not completely on GitHub.
 
+## Windows
+
+The `.ps1` scripts do the same as the bash ones, with the same arguments and questions, in
+Windows PowerShell 5.1 (part of Windows) or PowerShell 7. Run them from PowerShell:
+
+```powershell
+.\git_status_all.ps1 -NoFetch
+.\leave_machine.ps1 -Check
+```
+
+If Windows refuses to run scripts, allow the ones on this computer once:
+`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+
+What is different on Windows:
+
+- The default folder is `Documents\GitHub`, where GitHub Desktop puts repositories, or
+  `~\GitHub` if that does not exist. The folder question does not complete paths with Tab,
+  but takes a path pasted with *Copy as path* (quotes and all).
+- Switches are written the PowerShell way: `-NoFetch`, `-Check`, and `-Root` for
+  `shiny_update_manifests.ps1` (or `$env:ROOT`).
+- Missing programs are offered with `winget install` instead of `sudo apt install`. R is
+  found where its installer put it, even though it is not on the PATH.
+- `git_clone_all.ps1` needs only git, and clones over HTTPS, which git logs in to through the
+  Git Credential Manager as GitHub Desktop does; `-Ssh` clones over SSH. For private
+  repositories: `$env:GITHUB_TOKEN = 'ghp_...'; .\git_clone_all.ps1; Remove-Item Env:GITHUB_TOKEN`.
+- `hwrt.ps1` shows the RAM, the CPU speed (above the base speed when it boosts) and load, and
+  how busy each GPU is, by name, with the temperature, speed and memory of NVIDIA cards
+  (`nvidia-smi`). Windows itself reports only the temperatures of its ACPI thermal zones and no
+  fan speeds; while [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor)
+  runs (as administrator), it shows all of its temperatures and fans instead, as `lm-sensors`
+  does on Linux. Below 3000 MB of available RAM it beeps.
+- `r_install_packages.ps1` has no system packages to install, as R packages for Windows come
+  ready built; only a package with C/C++ code needs
+  [Rtools](https://cran.r-project.org/bin/windows/Rtools/) to be installed from source.
+- `leave_machine.ps1` also deletes, after asking, the GitHub logins in the Windows Credential
+  Manager (git's and GitHub Desktop's, which signs GitHub Desktop out), and looks for tokens
+  in the PowerShell profiles and history, in R's files in `Documents` (R's `~` on Windows),
+  and in user environment variables named like a token (`setx GITHUB_PAT ...`). It deletes a
+  repository with `rd`, which does not follow the links (junctions) that `renv` makes to its
+  package cache.
+- `hwrt_pi.sh` has no Windows version: it reads what only a Raspberry Pi has.
+
 ## New computer
 
 ```bash
@@ -212,4 +255,18 @@ To run the scripts by name from any folder, add to `~/.bashrc`:
 
 ```bash
 export PATH="$HOME/GitHub/shell_scripts:$PATH"
+```
+
+On Windows, in PowerShell:
+
+```powershell
+git clone https://github.com/sedzinfo/shell_scripts.git "$HOME\Documents\GitHub\shell_scripts"
+& "$HOME\Documents\GitHub\shell_scripts\git_clone_all.ps1"   # download everything
+& "$HOME\Documents\GitHub\shell_scripts\git_pull_all.ps1"    # later: keep it up to date
+```
+
+To run them by name from any folder (in new windows):
+
+```powershell
+[Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path', 'User') + ";$HOME\Documents\GitHub\shell_scripts", 'User')
 ```
