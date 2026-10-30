@@ -19,6 +19,7 @@ NVIDIA's are never offered.
 | [`hwrt_pi.sh`](hwrt_pi.sh) | The same for a Raspberry Pi, plus the power supply (under-voltage, throttling) | No |
 | [`shiny_update_manifests.sh`](shiny_update_manifests.sh) | Regenerates `manifest.json` of the Shiny apps for Posit Connect | Rewrites `manifest.json` only |
 | [`r_install_packages.sh`](r_install_packages.sh) | Installs the system and R packages a repository needs | Installs, after asking |
+| [`leave_machine.sh`](leave_machine.sh) | Before handing back a computer: checks that everything is on GitHub, then removes your repositories, GitHub key and logins | Yes, asks before each step |
 
 ## git_status_all.sh
 
@@ -163,6 +164,41 @@ listed first and asked (`y`) before anything is installed:
 
 Packages already installed are not touched or upgraded. If R, the compilers or
 `pak` are missing, it offers to install them first.
+
+## leave_machine.sh
+
+```bash
+leave_machine.sh --check            # only the report, nothing is removed
+leave_machine.sh [folder] [user]    # default ~/GitHub and sedzinfo
+```
+
+For the day you hand back a computer. First it shows, for each of your
+repositories (the ones whose origin is github.com/`user`), whether it is
+**completely on GitHub**: nothing uncommitted, nothing to push on any branch,
+nothing stashed. It fetches all of them at once first. Files that git ignores
+are listed, since they go with the folder (caches and the like, which R and
+Python make again, are not).
+
+Then, one step at a time and only after a `y`:
+
+1. Deletes the repositories that are completely on GitHub. The others are kept,
+   and so are other people's repositories (your employer's) and ones without a remote.
+2. Deletes the SSH keys of this computer that are on your GitHub account
+   (GitHub lists them at `github.com/USER.keys`). Other keys, such as the ones
+   for work servers, are left alone.
+3. Makes git forget the GitHub passwords and tokens it saved, and logs the
+   GitHub CLI out.
+4. Deletes lines with tokens or keys (`GITHUB_PAT`, `COINMARKETCAP_APIKEY`, ...)
+   from `~/.Renviron`, `~/.bashrc` and similar files and from the shell and R
+   history, after showing them with the values hidden.
+5. Removes the shinyapps.io / Posit Connect logins that `rsconnect` saved.
+
+At the end it lists what only you can do on the websites: delete the key from
+your GitHub account (it shows the fingerprint), sign out the other sessions,
+revoke tokens, and the token of shinyapps.io. Run it before deleting the key on
+GitHub, as it needs GitHub to check the repositories. Running `--check` a few
+days before shows what still needs a commit or a push; the exit code is 1
+while any repository is not completely on GitHub.
 
 ## New computer
 
