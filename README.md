@@ -3,8 +3,8 @@
 Small bash scripts: looking after many git repositories at once, and keeping an eye on the machine.
 The git scripts work on `~/GitHub` by default; if that folder does not exist, they ask for one
 (Tab completes paths, `~` works, an empty answer quits). Each one except `hwrt_pi.sh`,
-`disk_speed.sh` and `new_machine.sh` also comes as a PowerShell script for Windows (`.ps1`);
-see [Windows](#windows).
+`disk_speed.sh`, `new_machine.sh`, `r_cmd_check_all.sh`, `r_pkgdown_all.sh` and `r_pdf_all.sh`
+also comes as a PowerShell script for Windows (`.ps1`); see [Windows](#windows).
 
 When a program a script needs is missing (`lm-sensors`, `alsa-utils`, `pciutils`,
 `curl`, `jq`, `fio`), the script says what it is for and asks before installing it with
@@ -22,6 +22,9 @@ NVIDIA's are never offered.
 | [`disk_speed.sh`](disk_speed.sh) | Read and write speed of every drive, on a PC or a Raspberry Pi | Only a temporary test file, deleted at the end |
 | [`shiny_update_manifests.sh`](shiny_update_manifests.sh) | Regenerates `manifest.json` of the Shiny apps for Posit Connect | Rewrites `manifest.json` only |
 | [`r_install_packages.sh`](r_install_packages.sh) | Installs the system and R packages a repository needs | Installs, after asking |
+| [`r_cmd_check_all.sh`](r_cmd_check_all.sh) | Runs R CMD check on every R package and reports which have errors, warnings or notes | No (works in `~/.cache`) |
+| [`r_pkgdown_all.sh`](r_pkgdown_all.sh) | Builds the pkgdown website of every R package and reports failed builds and failing examples | Rewrites each site (`docs/`); commits nothing |
+| [`r_pdf_all.sh`](r_pdf_all.sh) | Makes the PDF reference manual of every R package | Rewrites `<package>.pdf` in each repository, or writes to `--to`; commits nothing |
 | [`new_machine.sh`](new_machine.sh) | Sets up a new computer with Linux Mint with the programs of the old one | Installs, asks before each step |
 | [`leave_machine.sh`](leave_machine.sh) | Before handing back a computer: checks that everything is on GitHub, then removes your repositories, GitHub key and logins | Yes, asks before each step |
 
@@ -202,6 +205,99 @@ listed first and asked (`y`) before anything is installed:
 Packages already installed are not touched or upgraded. If R, the compilers or
 `pak` are missing, it offers to install them first.
 
+## r_cmd_check_all.sh
+
+```bash
+r_cmd_check_all.sh                     # every R package in ~/GitHub
+r_cmd_check_all.sh rwf mleirt          # only these (package or folder names)
+r_cmd_check_all.sh ~/Projects          # another folder
+r_cmd_check_all.sh --as-cran           # as CRAN checks a submission
+r_cmd_check_all.sh --manual            # also the PDF manual (needs LaTeX)
+```
+
+Runs `R CMD check` on each R package (a folder with a `DESCRIPTION`, also one
+folder down as in `rwf/rwf`), one after the other: first `R CMD build`, as for
+CRAN (`.Rbuildignore` applied, vignettes built), then the check of the tarball.
+For each package it shows the result and the checks that were not OK; an error
+with its last lines, where R's error message is:
+
+```text
+generaterpm 0.1.0  (raven_like_progressive_matrix)
+  1 ERROR, 1 WARNING, 1 NOTE
+    NOTE: dependencies in R code
+    WARNING: Rd \usage sections
+        Undocumented arguments in Rd file 'fill_rectangle_nn.Rd'
+    ERROR: examples
+        Error in fill_rectangle_nn(items, labels = seq_along(items), ncol = 3,  :
+          unused argument (labels = seq_along(items))
+```
+
+At the end, a table of all packages (version, time, result) and the lists of
+the ones with errors and with warnings. The exit code is 1 if any package has
+errors.
+
+The repositories are not changed: everything is built and checked in
+`~/.cache/r_cmd_check_all/<package>`, where the full logs stay until the next run.
+The same package in two folders (`crypto` and `golemcrypto`) is checked once.
+Unlike CRAN, a suggested package that is not installed does not stop a check,
+and the tests marked `skip_on_cran()` run (as with `devtools::check()`);
+`--as-cran` keeps CRAN's rules. `r_install_packages.sh` installs what a package
+needs.
+
+## r_pkgdown_all.sh
+
+```bash
+r_pkgdown_all.sh                   # the site of every R package in ~/GitHub
+r_pkgdown_all.sh rwf mleirt        # only these (package or folder names)
+r_pkgdown_all.sh --no-examples     # without running the examples (quicker)
+```
+
+Builds the pkgdown website of each R package that has a `_pkgdown.yml`, with
+`pkgdown::build_site()`, into the folder GitHub Pages publishes it from:
+`docs/`, or the `destination` in `_pkgdown.yml` (`../docs` for rwf). For each
+package it says whether the build worked, how many files of the site changed,
+pkgdown's warnings (such as missing alt-text), and the help pages whose
+examples fail: pkgdown still builds those pages, with the error in them, so
+they are easy to miss. At the end it lists the failed builds, the examples
+with errors, and the repositories whose site changed:
+
+```text
+Examples with errors (the help page shows the error):
+  raven_like_progressive_matrix: compute_operation_sequence fill_rectangle_nn ...
+Changed sites, to commit and push for GitHub Pages: raven_like_progressive_matrix snp
+```
+
+Nothing is committed or pushed. Mirror repositories (`crypto` and
+`golemcrypto`) each get their own site, as each publishes its own. Packages
+without a `_pkgdown.yml` are listed and skipped (`pkgdown::use_pkgdown()` sets
+one up). The logs are in `~/.cache/r_pkgdown_all`; the exit code is 1 if any
+build failed. Needs R, pkgdown (it offers to install it) and pandoc.
+
+## r_pdf_all.sh
+
+```bash
+r_pdf_all.sh                       # the manual of every R package in ~/GitHub
+r_pdf_all.sh rwf mleirt            # only these (package or folder names)
+r_pdf_all.sh --to ~/manuals        # all of them in one folder instead
+```
+
+Makes the PDF reference manual of each R package, the one CRAN shows, with
+`R CMD Rd2pdf`: every help page, with an index. By default it writes
+`<package>.pdf` at the top of the repository (`rwf/rwf.pdf`,
+`raven_like_progressive_matrix/generaterpm.pdf`), where the build-tarball
+workflows put it; they rebuild it on every push anyway, so this is for seeing
+LaTeX errors before pushing. With `--to` all the manuals go in one folder,
+one per package (a mirror repository such as `crypto` is skipped there), and
+the repositories are not touched.
+
+For each package it shows the pages and size of the PDF, or, when LaTeX
+fails, LaTeX's first error with the line it is on (usually a `\eqn{}` or
+special character in a help file). At the end, the list of failed manuals;
+the exit code is 1 if any failed. The logs are in `~/.cache/r_pdf_all`.
+Needs R and LaTeX with the inconsolata font: TinyTeX
+(`tinytex::install_tinytex()`), or TeX Live with `texlive-fonts-extra`
+(the LaTeX step of `new_machine.sh`); it offers what is missing.
+
 ## new_machine.sh
 
 ```bash
@@ -334,6 +430,7 @@ What is different on Windows:
 - `hwrt_pi.sh` has no Windows version: it reads what only a Raspberry Pi has.
 - `disk_speed.sh` has no Windows version yet; CrystalDiskMark runs the same tests there.
 - `new_machine.sh` has no Windows version: it sets up Linux Mint.
+- `r_cmd_check_all.sh`, `r_pkgdown_all.sh` and `r_pdf_all.sh` have no Windows version yet.
 
 ## New computer
 
