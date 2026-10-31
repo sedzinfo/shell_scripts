@@ -22,7 +22,7 @@ NVIDIA's are never offered.
 | [`disk_speed.sh`](disk_speed.sh) | Read and write speed of every drive, on a PC or a Raspberry Pi | Only a temporary test file, deleted at the end |
 | [`shiny_update_manifests.sh`](shiny_update_manifests.sh) | Regenerates `manifest.json` of the Shiny apps for Posit Connect | Rewrites `manifest.json` only |
 | [`r_install_packages.sh`](r_install_packages.sh) | Installs the system and R packages a repository needs | Installs, after asking |
-| [`new_machine.sh`](new_machine.sh) | Sets up a new computer with Linux Mint: programs, R and Shiny Server, the NVIDIA driver, apps | Installs, asks before each step |
+| [`new_machine.sh`](new_machine.sh) | Sets up a new computer with Linux Mint with the programs of the old one | Installs, asks before each step |
 | [`leave_machine.sh`](leave_machine.sh) | Before handing back a computer: checks that everything is on GitHub, then removes your repositories, GitHub key and logins | Yes, asks before each step |
 
 ## git_status_all.sh
@@ -211,31 +211,48 @@ new_machine.sh --list   # only shows the steps and what they install
 ```
 
 Sets up a new computer with the latest Linux Mint (22 and later; Ubuntu 24.04
-and later too). One step at a time, it shows what the step installs and asks
-before installing it; a step that fails does not stop the others, and at the
-end it lists what was installed, skipped and failed.
+and later too) with the programs used on the old one, from apt repositories
+and from the .deb files of their makers, never from Flatpak. One step at a
+time, it shows what the step installs and asks before installing it; a step
+that fails does not stop the others, and at the end it lists what was
+installed, skipped and failed. Apps from their makers are always their newest
+version.
 
-1. **System updates** (`apt full-upgrade`)
-2. **NVIDIA driver**, only on a computer with an NVIDIA card: the driver Mint's
-   Driver Manager recommends, `nvidia-settings`, and fan control in it
-   (Coolbits 4, written to `/etc/X11/xorg.conf`)
-3. **Tools**: htop, bmon, terminator, git and Git LFS, ffmpeg, ImageMagick, ...
-4. **Programming**: compilers, Java, Python (pip, venv, pipx), Lisp, PostgreSQL
-   and the libraries programs compile against
-5. **R** from CRAN (the newest R, not the older one of Ubuntu), the libraries
-   that the R packages of your repositories need, and shiny, rmarkdown, rJava,
-   SparseM and rgl for all users
-6. **Shiny Server**, newest version, at <http://localhost:3838>
-7. **Apps**: calibre, cheese, Thunderbird, LyX, VirtualBox with its Extension
-   Pack (free only for personal and educational use), Steam
-8. **Google Chrome**, **Sublime Text**, **TeamViewer**, **Viber**, **Slack**
-   (from Flathub) and **AfterShot Pro 3**, each from its maker
-9. **Network tools**: nmap, Wireshark (captures as your user), aircrack-ng,
-   wifite, macchanger
+- **System updates** (`apt full-upgrade`)
+- **NVIDIA driver**, only on a computer with an NVIDIA card: the driver Mint's
+  Driver Manager recommends, `nvidia-settings`, and fan control in it
+  (Coolbits 4, written to `/etc/X11/xorg.conf`)
+- **Tools**: htop, tmux, git, Git LFS, gh, git-cola, meld, rclone, ffmpeg,
+  ImageMagick, the SSH server, ...
+- **System and hardware tools**: lm-sensors, fio, smartmontools, nvme-cli,
+  cpu-x, ... (what `hwrt.sh` and `disk_speed.sh` need)
+- **Programming**: compilers, Java, Lisp, Node.js, Rust, PostgreSQL, the MySQL
+  client, Python (pip, venv, pipx) and the libraries programs compile against
+- **Python 3.12 with pyenv**, in `~/.pyenv` (for virtual environments such as
+  pwf's); `~/.bashrc` is not changed, so the system Python stays the default
+- **R** from CRAN (the newest R, not the older one of Ubuntu), the libraries
+  that the R packages of your repositories need, and shiny, rmarkdown, rJava,
+  SparseM and rgl for all users
+- **RStudio**; **Shiny Server** and **RStudio Server**
+  (<http://localhost:3838>, <http://localhost:8787>)
+- **LaTeX** (TeX Live with Greek, TeXmaker); **Docker**
+- **Apps**: calibre, VLC, GIMP, Inkscape, Audacity, LyX, pdfarranger,
+  VirtualBox with its Extension Pack (free only for personal and educational
+  use), the Microsoft fonts, ...; **Games**: Steam, Hedgewars, Neverball,
+  Solitaire
+- From their makers: **VS Code** with your extensions, **Sublime Text**,
+  **Chrome**, **Edge**, **Slack**, **Discord**, **Zoom**, **Viber**,
+  **Dropbox**, **Insync**, **Surfshark**, **TeamViewer**, **PowerShell**,
+  **AWS CLI**, **Agent DVR**, **AfterShot Pro 3**
+- **Network tools**: nmap, arp-scan, Wireshark (captures as your user),
+  aircrack-ng, wifite, macchanger
+- **Security checks**: ClamAV, rkhunter, chkrootkit, debsums
 
-Afterwards restart (for the NVIDIA driver), or log out and in (for the
-`vboxusers` and `wireshark` groups). Then `git_clone_all.sh` downloads your
-repositories and `r_install_packages.sh` the R packages each one needs.
+RealVNC Viewer (no download link a script can use) and Mplus (licence) are left
+to do by hand. Afterwards restart (for the NVIDIA driver), or log out and in
+(for the `docker`, `vboxusers` and `wireshark` groups). Then `git_clone_all.sh`
+downloads your repositories and `r_install_packages.sh` the R packages each one
+needs.
 
 ## leave_machine.sh
 
