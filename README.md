@@ -3,8 +3,9 @@
 Small bash scripts: looking after many git repositories at once, and keeping an eye on the machine.
 The git scripts work on `~/GitHub` by default; if that folder does not exist, they ask for one
 (Tab completes paths, `~` works, an empty answer quits). Each one except `hwrt_pi.sh`,
-`disk_speed.sh`, `new_machine.sh`, `r_cmd_check_all.sh`, `r_pkgdown_all.sh` and `r_pdf_all.sh`
-also comes as a PowerShell script for Windows (`.ps1`); see [Windows](#windows).
+`disk_speed.sh`, `new_machine.sh`, `git_push_checked.sh`, `r_document_all.sh`,
+`r_cmd_check_all.sh`, `r_pkgdown_all.sh` and `r_pdf_all.sh` also comes as a PowerShell
+script for Windows (`.ps1`); see [Windows](#windows).
 
 When a program a script needs is missing (`lm-sensors`, `alsa-utils`, `pciutils`,
 `curl`, `jq`, `fio`), the script says what it is for and asks before installing it with
@@ -17,11 +18,13 @@ NVIDIA's are never offered.
 | [`git_status_all.sh`](git_status_all.sh) | One line per repository: clean, or what is not yet on GitHub | No |
 | [`git_pull_all.sh`](git_pull_all.sh) | Pulls every repository | Yes, asks before anything destructive |
 | [`git_clone_all.sh`](git_clone_all.sh) | Clones every repository of a GitHub user that is not downloaded yet | Only adds new folders |
+| [`git_push_checked.sh`](git_push_checked.sh) | Pushes what is not on GitHub yet, once R CMD check passes for each R package it changes | Pushes what passes; commits nothing |
 | [`hwrt.sh`](hwrt.sh) | Live view of RAM, CPU speed, GPU, temperatures and fans; beeps when RAM is low | No |
 | [`hwrt_pi.sh`](hwrt_pi.sh) | The same for a Raspberry Pi, plus the power supply (under-voltage, throttling) | No |
 | [`disk_speed.sh`](disk_speed.sh) | Read and write speed of every drive, on a PC or a Raspberry Pi | Only a temporary test file, deleted at the end |
 | [`shiny_update_manifests.sh`](shiny_update_manifests.sh) | Regenerates `manifest.json` of the Shiny apps for Posit Connect | Rewrites `manifest.json` only |
 | [`r_install_packages.sh`](r_install_packages.sh) | Installs the system and R packages a repository needs | Installs, after asking |
+| [`r_document_all.sh`](r_document_all.sh) | Updates the help pages and `NAMESPACE` of every R package from its roxygen comments; `--check` lists the ones out of date | Rewrites `man/` and `NAMESPACE` (not with `--check`); commits nothing |
 | [`r_cmd_check_all.sh`](r_cmd_check_all.sh) | Runs R CMD check on every R package and reports which have errors, warnings or notes | No (works in `~/.cache`) |
 | [`r_pkgdown_all.sh`](r_pkgdown_all.sh) | Builds the pkgdown website of every R package and reports failed builds and failing examples | Rewrites each site (`docs/`); commits nothing |
 | [`r_pdf_all.sh`](r_pdf_all.sh) | Makes the PDF reference manual of every R package | Rewrites `<package>.pdf` in each repository, or writes to `--to`; commits nothing |
@@ -90,6 +93,45 @@ GITHUB_TOKEN=ghp_... git_clone_all.sh
 ```
 
 Needs `curl` and `jq`.
+
+## git_push_checked.sh
+
+```bash
+git_push_checked.sh                    # every repository in ~/GitHub
+git_push_checked.sh worldbank snp      # only these repositories
+git_push_checked.sh --dry-run          # checks, but pushes nothing
+git_push_checked.sh --strict           # notes also stop a push
+```
+
+Pushes the commits that are not on GitHub yet, as `git push` in each
+repository would, but first runs `R CMD check` (with `r_cmd_check.sh`) on each
+R package those commits change, and pushes a repository only when its packages
+pass: no errors or warnings, and with `--strict` no notes either. Half-finished
+work then stays on this computer instead of reaching GitHub and starting the
+build-tarball workflow:
+
+```text
+worldbank  (main, 1 commit to push)
+  bf3ff77 fix
+  checking worldbank on a clean copy of the last commit
+  worldbank 0.0.0.9000  (worldbank)
+    1 WARNING
+      WARNING: data for ASCII and uncompressed saves
+  not pushed: worldbank 1 WARNING
+```
+
+The check runs on a clean copy of the last commit (a git worktree in
+`~/.cache/git_push_checked`), exactly what would be pushed, so uncommitted or
+untracked files neither help nor spoil it; they stay as they are and are not
+pushed. Commits that change nothing that goes into a package (its site in
+`docs/`, or other files left out by `.Rbuildignore`) are pushed without a
+check, as are repositories without R packages.
+
+A repository that is behind GitHub is not pushed (pull first, with
+`git_pull_all.sh`), and one without an upstream branch is skipped. At the end,
+a table of the repositories with commits to push and what happened to each.
+Nothing is committed; the exit code is 1 if any repository with commits to
+push was not pushed. Needs R and `r_cmd_check.sh` next to it.
 
 ## hwrt.sh
 
@@ -204,6 +246,41 @@ listed first and asked (`y`) before anything is installed:
 
 Packages already installed are not touched or upgraded. If R, the compilers or
 `pak` are missing, it offers to install them first.
+
+## r_document_all.sh
+
+```bash
+r_document_all.sh                      # every R package in ~/GitHub
+r_document_all.sh rwf mleirt           # only these (package or folder names)
+r_document_all.sh --check              # only list the ones out of date
+```
+
+Updates the help pages (`man/*.Rd`) and `NAMESPACE` of each R package from its
+roxygen comments with `roxygen2::roxygenise()`, which is what
+`devtools::document()` does for one package. `r_cmd_check.sh`,
+`r_pkgdown_all.sh` and `r_pdf_all.sh` use `man/` as it is, so run this first;
+otherwise a help page whose comments changed since it was last written is
+checked and published as it was.
+
+For each package it lists the files that changed and roxygen's warnings (such
+as a topic skipped for having no title); at the end, the repositories with
+changes, to commit and push. With `--check` roxygen runs on a copy of each
+package, so nothing changes, and it lists the packages whose help pages or
+`NAMESPACE` no longer match their comments:
+
+```text
+Out of date in 2: covid mleirt
+  r_document_all.sh covid mleirt updates them; git diff then shows what changed
+```
+
+Roxygen also writes its own version into `DESCRIPTION`; `--check` ignores that
+line, and when a package was last documented with another major or minor
+roxygen2 version (covid with 7.3.2), it says that some differences may only be
+layout. Mirror repositories are each documented, and packages without roxygen
+comments are skipped. Roxygen loads each package, so what it uses must be
+installed (`r_install_packages.sh`). Nothing is committed or pushed; the logs
+are in `~/.cache/r_document_all`. The exit code is 1 if any failed, or with
+`--check` if any is out of date. Needs R and roxygen2 (it offers to install it).
 
 ## r_cmd_check_all.sh
 
