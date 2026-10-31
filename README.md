@@ -2,11 +2,12 @@
 
 Small bash scripts: looking after many git repositories at once, and keeping an eye on the machine.
 The git scripts work on `~/GitHub` by default; if that folder does not exist, they ask for one
-(Tab completes paths, `~` works, an empty answer quits). Each one except `hwrt_pi.sh` also
-comes as a PowerShell script for Windows (`.ps1`); see [Windows](#windows).
+(Tab completes paths, `~` works, an empty answer quits). Each one except `hwrt_pi.sh`,
+`disk_speed.sh` and `new_machine.sh` also comes as a PowerShell script for Windows (`.ps1`);
+see [Windows](#windows).
 
 When a program a script needs is missing (`lm-sensors`, `alsa-utils`, `pciutils`,
-`curl`, `jq`), the script says what it is for and asks before installing it with
+`curl`, `jq`, `fio`), the script says what it is for and asks before installing it with
 `sudo apt install`. Answer no and it goes on with what it can (`git_clone_all.sh`
 stops, since it cannot work without `curl` and `jq`). Graphics drivers such as
 NVIDIA's are never offered.
@@ -18,8 +19,10 @@ NVIDIA's are never offered.
 | [`git_clone_all.sh`](git_clone_all.sh) | Clones every repository of a GitHub user that is not downloaded yet | Only adds new folders |
 | [`hwrt.sh`](hwrt.sh) | Live view of RAM, CPU speed, GPU, temperatures and fans; beeps when RAM is low | No |
 | [`hwrt_pi.sh`](hwrt_pi.sh) | The same for a Raspberry Pi, plus the power supply (under-voltage, throttling) | No |
+| [`disk_speed.sh`](disk_speed.sh) | Read and write speed of every drive, on a PC or a Raspberry Pi | Only a temporary test file, deleted at the end |
 | [`shiny_update_manifests.sh`](shiny_update_manifests.sh) | Regenerates `manifest.json` of the Shiny apps for Posit Connect | Rewrites `manifest.json` only |
 | [`r_install_packages.sh`](r_install_packages.sh) | Installs the system and R packages a repository needs | Installs, after asking |
+| [`new_machine.sh`](new_machine.sh) | Sets up a new computer with Linux Mint: programs, R and Shiny Server, the NVIDIA driver, apps | Installs, asks before each step |
 | [`leave_machine.sh`](leave_machine.sh) | Before handing back a computer: checks that everything is on GitHub, then removes your repositories, GitHub key and logins | Yes, asks before each step |
 
 ## git_status_all.sh
@@ -118,6 +121,39 @@ hwrt_pi.sh  # Ctrl+C to quit
 The Pi lines need `vcgencmd` (on Raspberry Pi OS; the user must be in the
 `video` group). Without it the script still shows RAM, CPU, temperatures and fans.
 
+## disk_speed.sh
+
+```bash
+disk_speed.sh                 # every drive
+disk_speed.sh sda nvme0n1     # only these (the names lsblk shows)
+disk_speed.sh --list          # only show the drives and how each would be tested
+```
+
+How fast each drive reads and writes, in MB/s, with the tests of CrystalDiskMark:
+**SEQ1M Q8** (large files), **RND4K Q32** (many small reads and writes at once)
+and **RND4K Q1** (one small read or write at a time: the slowest, and closest to
+how fast a system disk feels). Works on a PC and on a Raspberry Pi (SD card, USB
+drives, NVMe on a Pi 5).
+
+- A drive with a mounted filesystem that has room is tested with a temporary file
+  (`.disk_speed.<number>.tmp`) on its filesystem with the most free space, also
+  inside LUKS or LVM: written, read, and deleted at the end, also on Ctrl+C. On a
+  slow drive the file is written for at most 30 seconds, so it can be smaller than
+  asked for.
+- A drive with nothing mounted (another system's disk, BitLocker, a closed LUKS
+  drive) is only read, straight from the drive, and its write column shows `-`.
+  Nothing is ever written to a drive itself: fio runs there with `--readonly`.
+- `--read-only` tests every drive that way, writing nothing at all.
+- `--size 256M` makes the test file smaller (default `1G`), quicker on SD cards and
+  USB sticks; `--time 10` runs each test longer (default 5 seconds).
+- On a filesystem that cannot bypass the cache (some NTFS and exFAT drives, ZFS)
+  the file is tested through the cache, emptied before each read; it says so, and
+  the numbers are rougher.
+
+It runs itself with sudo (it asks for the password), since reading a drive
+directly and writing on `/` need root. Needs `fio`. A drive takes about half a
+minute (6 tests of 5 seconds), one that is only read about 15 seconds.
+
 ## shiny_update_manifests.sh
 
 ```bash
@@ -165,6 +201,41 @@ listed first and asked (`y`) before anything is installed:
 
 Packages already installed are not touched or upgraded. If R, the compilers or
 `pak` are missing, it offers to install them first.
+
+## new_machine.sh
+
+```bash
+new_machine.sh          # asks before each step
+new_machine.sh --yes    # every step, without asking
+new_machine.sh --list   # only shows the steps and what they install
+```
+
+Sets up a new computer with the latest Linux Mint (22 and later; Ubuntu 24.04
+and later too). One step at a time, it shows what the step installs and asks
+before installing it; a step that fails does not stop the others, and at the
+end it lists what was installed, skipped and failed.
+
+1. **System updates** (`apt full-upgrade`)
+2. **NVIDIA driver**, only on a computer with an NVIDIA card: the driver Mint's
+   Driver Manager recommends, `nvidia-settings`, and fan control in it
+   (Coolbits 4, written to `/etc/X11/xorg.conf`)
+3. **Tools**: htop, bmon, terminator, git and Git LFS, ffmpeg, ImageMagick, ...
+4. **Programming**: compilers, Java, Python (pip, venv, pipx), Lisp, PostgreSQL
+   and the libraries programs compile against
+5. **R** from CRAN (the newest R, not the older one of Ubuntu), the libraries
+   that the R packages of your repositories need, and shiny, rmarkdown, rJava,
+   SparseM and rgl for all users
+6. **Shiny Server**, newest version, at <http://localhost:3838>
+7. **Apps**: calibre, cheese, Thunderbird, LyX, VirtualBox with its Extension
+   Pack (free only for personal and educational use), Steam
+8. **Google Chrome**, **Sublime Text**, **TeamViewer**, **Viber**, **Slack**
+   (from Flathub) and **AfterShot Pro 3**, each from its maker
+9. **Network tools**: nmap, Wireshark (captures as your user), aircrack-ng,
+   wifite, macchanger
+
+Afterwards restart (for the NVIDIA driver), or log out and in (for the
+`vboxusers` and `wireshark` groups). Then `git_clone_all.sh` downloads your
+repositories and `r_install_packages.sh` the R packages each one needs.
 
 ## leave_machine.sh
 
@@ -242,11 +313,15 @@ What is different on Windows:
   repository with `rd`, which does not follow the links (junctions) that `renv` makes to its
   package cache.
 - `hwrt_pi.sh` has no Windows version: it reads what only a Raspberry Pi has.
+- `disk_speed.sh` has no Windows version yet; CrystalDiskMark runs the same tests there.
+- `new_machine.sh` has no Windows version: it sets up Linux Mint.
 
 ## New computer
 
 ```bash
+sudo apt install git                      # if git is not there yet
 git clone git@github.com:sedzinfo/shell_scripts.git ~/GitHub/shell_scripts
+~/GitHub/shell_scripts/new_machine.sh     # programs, R, drivers, apps
 ~/GitHub/shell_scripts/git_clone_all.sh   # download everything
 ~/GitHub/shell_scripts/git_pull_all.sh    # later: keep it up to date
 ```
