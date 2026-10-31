@@ -246,7 +246,9 @@ version.
   **AWS CLI**, **Agent DVR**, **AfterShot Pro 3**
 - **Network tools**: nmap, arp-scan, Wireshark (captures as your user),
   aircrack-ng, wifite, macchanger
-- **Security checks**: ClamAV, rkhunter, chkrootkit, debsums
+- **Security checks**: ClamAV, rkhunter, chkrootkit, debsums (rkhunter and
+  chkrootkit bring the postfix mail server for their reports, set to deliver
+  on this computer only)
 
 RealVNC Viewer (no download link a script can use) and Mplus (licence) are left
 to do by hand. Afterwards restart (for the NVIDIA driver), or log out and in

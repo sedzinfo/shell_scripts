@@ -84,9 +84,13 @@ yes_no() {
   [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]
 }
 
-# apt without questions (the few it would ask are answered first with preseed),
-# waiting up to 2 minutes while the Update Manager is using apt
-apt_get() { sudo env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 "$@"; }
+# apt without questions (the few it would ask are answered first with preseed;
+# changed configuration files are kept), waiting up to 2 minutes while the
+# Update Manager is using apt
+apt_get() {
+  sudo env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 \
+    -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold "$@"
+}
 
 # an answer to a question a package asks while installing (debconf)
 preseed() { echo "$1" | sudo debconf-set-selections; }
@@ -357,6 +361,12 @@ step() {  # name, what it installs, function
 if [ $list -eq 0 ]; then
   echo "Setting up ${PRETTY_NAME:-this computer}. sudo asks for your password once."
   sudo -v || exit 1
+  # sudo forgets the password after 15 minutes; this keeps it while the script runs
+  while kill -0 $$ 2> /dev/null; do sudo -n -v 2> /dev/null; sleep 60; done &
+  # rkhunter and chkrootkit bring a mail server (postfix) for their reports; it
+  # delivers on this computer only, as on the old one, instead of listening on the network
+  preseed "postfix postfix/main_mailer_type select Local only"
+  preseed "postfix postfix/mailname string $(hostname)"
   apt_get update || echo "${yellow}apt update reported errors (see above); going on${reset}"
 fi
 
