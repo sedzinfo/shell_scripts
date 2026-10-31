@@ -87,10 +87,14 @@ do
 	total=$(free -m|awk '{print $2}' | awk 'END{print}')
 	available=$(free -m | awk '/^Mem:/{print $7}')
 	cpu_speed=$(lscpu | grep MHz)
-	# only on machines with an NVIDIA card (nvidia-smi installed and working)
+	# only on machines with an NVIDIA card (nvidia-smi installed and working):
+	# one line per card, laid out like the Intel line, with its temperature
 	gpu_status=""
-	if command -v nvidia-smi > /dev/null; then
-		gpu_status=$(nvidia-smi 2> /dev/null | grep % | awk '{print $3}')
+	if command -v nvidia-smi > /dev/null &&
+		nvidia=$(nvidia-smi --query-gpu=clocks.gr,utilization.gpu,temperature.gpu,clocks.max.gr,name \
+			--format=csv,noheader,nounits 2> /dev/null); then
+		gpu_status=$(awk -F', ' '{ sub(/^NVIDIA /, "", $5)
+			printf "%-15s %10s   busy %s%%, %s°C, max %s MHz, %s\n", "NVIDIA GPU", $1 " MHz", $2, $3, $4, $5 }' <<< "$nvidia")
 	fi
 	sensors_output=$(sensors 2> /dev/null)
 	cpu_temperature=$(sensors_table '°C' <<< "$sensors_output")
@@ -109,7 +113,7 @@ do
 			"busy ${busy:-..}%, max $(cat "$intel_gpu/gt_max_freq_mhz") MHz, ${intel_name}"
 	fi
 	if [ -n "$gpu_status" ]; then
-		echo GPU: $gpu_status
+		echo "$gpu_status"
 	fi
 	if [ -n "$intel_gpu" ] || [ -n "$gpu_status" ]; then
 		separator
