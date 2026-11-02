@@ -289,7 +289,7 @@ try {
       }
       # roxygen's warnings (lines starting with a cross sign or !), such as a @param without
       # a description or a link to a topic that does not exist
-      @($output) | Where-Object { $_ -cmatch '^(✖|!) |^Warning' } | Sort-Object -Unique |
+      @($output) | Where-Object { $_ -cmatch '^(\u2716|!) |^Warning' } | Sort-Object -Unique |
         Select-Object -First 10 | ForEach-Object { Write-Host "    $_" -ForegroundColor Yellow }
     } else {
       $result = 'failed'

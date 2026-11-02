@@ -198,7 +198,7 @@ foreach ($dir in $dirs) {
     if ($broken.Count -gt 0) { Write-Host "    examples with errors: $($broken -join ' ')" -ForegroundColor Yellow }
     # pkgdown's warnings (lines starting with ! or a cross sign), such as missing alt-text or
     # topics missing from the reference index
-    @($output) | Where-Object { $_ -cmatch '^(!|✖) ' } | Sort-Object -Unique |
+    @($output) | Where-Object { $_ -cmatch '^(!|\u2716) ' } | Sort-Object -Unique |
       Select-Object -First 10 | ForEach-Object { Write-Host "    $_" -ForegroundColor Yellow }
   } else {
     $result = 'failed'

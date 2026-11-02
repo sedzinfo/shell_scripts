@@ -2,10 +2,8 @@
 
 Small bash scripts: looking after many git repositories at once, and keeping an eye on the machine.
 The git scripts work on `~/GitHub` by default; if that folder does not exist, they ask for one
-(Tab completes paths, `~` works, an empty answer quits). Each one except `hwrt_pi.sh`,
-`disk_speed.sh`, `machine_new.sh`, `git_push_checked.sh`, `r_document_all.sh`,
-`r_cmd_check.sh`, `r_pkgdown_all.sh` and `r_pdf_all.sh` also comes as a PowerShell
-script for Windows (`.ps1`); see [Windows](#windows).
+(Tab completes paths, `~` works, an empty answer quits). Each one except `hwrt_pi.sh` and
+`machine_new.sh` also comes as a PowerShell script for Windows (`.ps1`); see [Windows](#windows).
 
 When a program a script needs is missing (`lm-sensors`, `alsa-utils`, `pciutils`,
 `curl`, `jq`, `fio`), the script says what it is for and asks before installing it with
@@ -482,8 +480,11 @@ What is different on Windows:
 - The default folder is `Documents\GitHub`, where GitHub Desktop puts repositories, or
   `~\GitHub` if that does not exist. The folder question does not complete paths with Tab,
   but takes a path pasted with *Copy as path* (quotes and all).
-- Switches are written the PowerShell way: `-NoFetch`, `-Check`, and `-Root` for
-  `r_shiny_update_manifests.ps1` (or `$env:ROOT`).
+- Switches are written the PowerShell way: `-NoFetch`, `-Check`, `-DryRun`, `-Strict`,
+  `-AsCran`, `-Manual`, `-NoExamples`, `-To`, `-List`, `-Size`, `-Time`, `-ReadOnly`, and
+  `-Root` for `r_shiny_update_manifests.ps1` (or `$env:ROOT`).
+- The logs and working copies that the bash scripts keep in `~/.cache` go to
+  `%LOCALAPPDATA%` (e.g. `%LOCALAPPDATA%\r_cmd_check_all`).
 - Missing programs are offered with `winget install` instead of `sudo apt install`. R is
   found where its installer put it, even though it is not on the PATH.
 - `git_clone_all.ps1` needs only git, and clones over HTTPS, which git logs in to through the
@@ -504,10 +505,17 @@ What is different on Windows:
   and in user environment variables named like a token (`setx GITHUB_PAT ...`). It deletes a
   repository with `rd`, which does not follow the links (junctions) that `renv` makes to its
   package cache.
+- `r_cmd_check.ps1` (and so `git_push_checked.ps1`) builds packages with C/C++ code only with
+  Rtools installed; `-Manual` and `r_pdf_all.ps1` need LaTeX, which they offer as MiKTeX.
+- `r_document_all.ps1 -Check` links the big folders of its copy of a package with junctions,
+  which need no administrator rights, copies the other files, and deletes the copy with `rd`.
+- `disk_speed.ps1` names the drives by the numbers `Get-Disk` shows (`disk_speed.ps1 0 1`).
+  fio comes from its [Windows installer](https://github.com/axboe/fio/releases). The test file
+  goes in your temporary folder on the Windows drive and in a folder of its own on the others;
+  reading a drive itself (a drive without a drive letter, or `-ReadOnly`) needs PowerShell run
+  as administrator, and without it that drive is skipped.
 - `hwrt_pi.sh` has no Windows version: it reads what only a Raspberry Pi has.
-- `disk_speed.sh` has no Windows version yet; CrystalDiskMark runs the same tests there.
 - `machine_new.sh` has no Windows version: it sets up Linux Mint.
-- `r_cmd_check.sh`, `r_pkgdown_all.sh` and `r_pdf_all.sh` have no Windows version yet.
 
 ## New computer
 
