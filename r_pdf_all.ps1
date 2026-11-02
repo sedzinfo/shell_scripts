@@ -79,11 +79,12 @@ if ($missing.Count -gt 0) {
   $ids = $missing | ForEach-Object { $_[2] }
   if ((Get-Command winget -ErrorAction SilentlyContinue) -and (Test-Yes "Install them now with winget install $($ids -join ' ')?")) {
     foreach ($id in $ids) { winget install --id $id --exact --source winget }
+    if (-not $rscript) { $rscript = Find-Rscript }
     if ($ids -contains 'MiKTeX.MiKTeX') { Write-Host 'Open a new PowerShell window for LaTeX to be found, and run this again.' }
   } else {
     Write-Host "Install them with: winget install $($ids -join ' ')"
   }
-  exit 1
+  if (-not $rscript -or -not (Get-Command pdflatex -ErrorAction SilentlyContinue)) { exit 1 }
 }
 # R CMD runs through R.exe, which sits next to Rscript.exe
 $r = Join-Path (Split-Path -Parent $rscript) 'R.exe'
