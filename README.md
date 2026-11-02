@@ -17,6 +17,7 @@ NVIDIA's are never offered.
 | [`git_pull_all.sh`](git_pull_all.sh) | Pulls every repository | Yes, asks before anything destructive |
 | [`git_clone_all.sh`](git_clone_all.sh) | Clones every repository of a GitHub user that is not downloaded yet | Only adds new folders |
 | [`git_push_checked.sh`](git_push_checked.sh) | Pushes what is not on GitHub yet, once R CMD check passes for each R package it changes | Pushes what passes; commits nothing |
+| [`git_large_files_all.sh`](git_large_files_all.sh) | Finds files that GitHub would refuse (over 100 MB) or warn about (over 50 MB), files that should be in Git LFS, and LFS files never downloaded | No |
 | [`hwrt.sh`](hwrt.sh) | Live view of RAM, CPU speed, GPU, temperatures and fans; beeps when RAM is low | No |
 | [`hwrt_pi.sh`](hwrt_pi.sh) | The same for a Raspberry Pi, plus the power supply (under-voltage, throttling) | No |
 | [`disk_speed.sh`](disk_speed.sh) | Read and write speed of every drive, on a PC or a Raspberry Pi | Only a temporary test file, deleted at the end |
@@ -130,6 +131,48 @@ A repository that is behind GitHub is not pushed (pull first, with
 a table of the repositories with commits to push and what happened to each.
 Nothing is committed; the exit code is 1 if any repository with commits to
 push was not pushed. Needs R and `r_cmd_check.sh` next to it.
+
+## git_large_files_all.sh
+
+```bash
+git_large_files_all.sh                  # every repository in ~/GitHub
+git_large_files_all.sh rwf worldbank    # only these
+git_large_files_all.sh --size 20M       # also smaller files (default 50M)
+git_large_files_all.sh --history        # also the largest files ever committed
+```
+
+GitHub warns about a file over 50 MB and refuses a push with a file over
+100 MB, even one that a later commit deletes again. For each repository this
+lists, largest first:
+
+- files over 100 MB in commits not pushed yet: the push would fail
+- files over the size without Git LFS, committed or not yet (`git add` would add them)
+- files that `.gitattributes` puts in LFS but that were committed without it
+  (usually before `git lfs install`)
+- LFS files whose content was never downloaded (`git lfs pull` fetches them)
+
+```text
+rscripts_repo  (main)
+     54.0 MB  scoring/tirt_scoring/models/model_scores_parallel_response_patterns.csv in git, not in LFS: GitHub warns
+    git lfs migrate import --no-rewrite FILE moves a committed file to LFS in a new commit (older commits keep it)
+```
+
+Under each repository it says which command fixes what it found. `--history`
+also shows what makes `.git` big: the files ever committed, each with its
+versions added up, which stay in `.git` after they are deleted (taking them out
+means rewriting the history with `git filter-repo`), and the local copies of
+old LFS versions, which `git lfs prune` deletes (GitHub keeps them):
+
+```text
+golemworldbank  (main)
+  .git is 6,0G: 252M of commits, 5,8G of LFS copies
+  largest files ever committed:
+    282.9 MB  worldbankmodular_0.0.1.tar.gz  (4 versions)
+    taking them out of .git means rewriting the history (git filter-repo), which changes every commit since
+    git lfs prune would free 5.5 GB: the local copies of 142 old LFS versions (GitHub keeps them)
+```
+
+Nothing is changed; the exit code is 1 if GitHub would refuse a push.
 
 ## hwrt.sh
 
