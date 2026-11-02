@@ -3,8 +3,8 @@
 Small bash scripts: looking after many git repositories at once, and keeping an eye on the machine.
 The git scripts work on `~/GitHub` by default; if that folder does not exist, they ask for one
 (Tab completes paths, `~` works, an empty answer quits). Each one except `hwrt_pi.sh`,
-`disk_speed.sh`, `new_machine.sh`, `git_push_checked.sh`, `r_document_all.sh`,
-`r_cmd_check_all.sh`, `r_pkgdown_all.sh` and `r_pdf_all.sh` also comes as a PowerShell
+`disk_speed.sh`, `machine_new.sh`, `git_push_checked.sh`, `r_document_all.sh`,
+`r_cmd_check.sh`, `r_pkgdown_all.sh` and `r_pdf_all.sh` also comes as a PowerShell
 script for Windows (`.ps1`); see [Windows](#windows).
 
 When a program a script needs is missing (`lm-sensors`, `alsa-utils`, `pciutils`,
@@ -22,14 +22,14 @@ NVIDIA's are never offered.
 | [`hwrt.sh`](hwrt.sh) | Live view of RAM, CPU speed, GPU, temperatures and fans; beeps when RAM is low | No |
 | [`hwrt_pi.sh`](hwrt_pi.sh) | The same for a Raspberry Pi, plus the power supply (under-voltage, throttling) | No |
 | [`disk_speed.sh`](disk_speed.sh) | Read and write speed of every drive, on a PC or a Raspberry Pi | Only a temporary test file, deleted at the end |
-| [`shiny_update_manifests.sh`](shiny_update_manifests.sh) | Regenerates `manifest.json` of the Shiny apps for Posit Connect | Rewrites `manifest.json` only |
+| [`r_shiny_update_manifests.sh`](r_shiny_update_manifests.sh) | Regenerates `manifest.json` of the Shiny apps for Posit Connect | Rewrites `manifest.json` only |
 | [`r_install_packages.sh`](r_install_packages.sh) | Installs the system and R packages a repository needs | Installs, after asking |
 | [`r_document_all.sh`](r_document_all.sh) | Updates the help pages and `NAMESPACE` of every R package from its roxygen comments; `--check` lists the ones out of date | Rewrites `man/` and `NAMESPACE` (not with `--check`); commits nothing |
-| [`r_cmd_check_all.sh`](r_cmd_check_all.sh) | Runs R CMD check on every R package and reports which have errors, warnings or notes | No (works in `~/.cache`) |
+| [`r_cmd_check.sh`](r_cmd_check.sh) | Runs R CMD check on every R package and reports which have errors, warnings or notes | No (works in `~/.cache`) |
 | [`r_pkgdown_all.sh`](r_pkgdown_all.sh) | Builds the pkgdown website of every R package and reports failed builds and failing examples | Rewrites each site (`docs/`); commits nothing |
 | [`r_pdf_all.sh`](r_pdf_all.sh) | Makes the PDF reference manual of every R package | Rewrites `<package>.pdf` in each repository, or writes to `--to`; commits nothing |
-| [`new_machine.sh`](new_machine.sh) | Sets up a new computer with Linux Mint with the programs of the old one | Installs, asks before each step |
-| [`leave_machine.sh`](leave_machine.sh) | Before handing back a computer: checks that everything is on GitHub, then removes your repositories, GitHub key and logins | Yes, asks before each step |
+| [`machine_new.sh`](machine_new.sh) | Sets up a new computer with Linux Mint with the programs of the old one | Installs, asks before each step |
+| [`machine_leave.sh`](machine_leave.sh) | Before handing back a computer: checks that everything is on GitHub, then removes your repositories, GitHub key and logins | Yes, asks before each step |
 
 ## git_status_all.sh
 
@@ -199,12 +199,12 @@ It runs itself with sudo (it asks for the password), since reading a drive
 directly and writing on `/` need root. Needs `fio`. A drive takes about half a
 minute (6 tests of 5 seconds), one that is only read about 15 seconds.
 
-## shiny_update_manifests.sh
+## r_shiny_update_manifests.sh
 
 ```bash
-shiny_update_manifests.sh              # every app in ~/GitHub that has a manifest.json
-shiny_update_manifests.sh golemirt     # only the apps named (also makes a first manifest)
-ROOT=~/Projects shiny_update_manifests.sh
+r_shiny_update_manifests.sh              # every app in ~/GitHub that has a manifest.json
+r_shiny_update_manifests.sh golemirt     # only the apps named (also makes a first manifest)
+ROOT=~/Projects r_shiny_update_manifests.sh
 ```
 
 Posit Connect (Cloud) installs an app from its `manifest.json`: the list of R
@@ -282,14 +282,14 @@ installed (`r_install_packages.sh`). Nothing is committed or pushed; the logs
 are in `~/.cache/r_document_all`. The exit code is 1 if any failed, or with
 `--check` if any is out of date. Needs R and roxygen2 (it offers to install it).
 
-## r_cmd_check_all.sh
+## r_cmd_check.sh
 
 ```bash
-r_cmd_check_all.sh                     # every R package in ~/GitHub
-r_cmd_check_all.sh rwf mleirt          # only these (package or folder names)
-r_cmd_check_all.sh ~/Projects          # another folder
-r_cmd_check_all.sh --as-cran           # as CRAN checks a submission
-r_cmd_check_all.sh --manual            # also the PDF manual (needs LaTeX)
+r_cmd_check.sh                     # every R package in ~/GitHub
+r_cmd_check.sh rwf mleirt          # only these (package or folder names)
+r_cmd_check.sh ~/Projects          # another folder
+r_cmd_check.sh --as-cran           # as CRAN checks a submission
+r_cmd_check.sh --manual            # also the PDF manual (needs LaTeX)
 ```
 
 Runs `R CMD check` on each R package (a folder with a `DESCRIPTION`, also one
@@ -373,14 +373,14 @@ special character in a help file). At the end, the list of failed manuals;
 the exit code is 1 if any failed. The logs are in `~/.cache/r_pdf_all`.
 Needs R and LaTeX with the inconsolata font: TinyTeX
 (`tinytex::install_tinytex()`), or TeX Live with `texlive-fonts-extra`
-(the LaTeX step of `new_machine.sh`); it offers what is missing.
+(the LaTeX step of `machine_new.sh`); it offers what is missing.
 
-## new_machine.sh
+## machine_new.sh
 
 ```bash
-new_machine.sh          # asks before each step
-new_machine.sh --yes    # every step, without asking
-new_machine.sh --list   # only shows the steps and what they install
+machine_new.sh          # asks before each step
+machine_new.sh --yes    # every step, without asking
+machine_new.sh --list   # only shows the steps and what they install
 ```
 
 Sets up a new computer with the latest Linux Mint (22 and later; Ubuntu 24.04
@@ -429,11 +429,11 @@ to do by hand. Afterwards restart (for the NVIDIA driver), or log out and in
 downloads your repositories and `r_install_packages.sh` the R packages each one
 needs.
 
-## leave_machine.sh
+## machine_leave.sh
 
 ```bash
-leave_machine.sh --check            # only the report, nothing is removed
-leave_machine.sh [folder] [user]    # default ~/GitHub and sedzinfo
+machine_leave.sh --check            # only the report, nothing is removed
+machine_leave.sh [folder] [user]    # default ~/GitHub and sedzinfo
 ```
 
 For the day you hand back a computer. First it shows, for each of your
@@ -471,7 +471,7 @@ Windows PowerShell 5.1 (part of Windows) or PowerShell 7. Run them from PowerShe
 
 ```powershell
 .\git_status_all.ps1 -NoFetch
-.\leave_machine.ps1 -Check
+.\machine_leave.ps1 -Check
 ```
 
 If Windows refuses to run scripts, allow the ones on this computer once:
@@ -483,7 +483,7 @@ What is different on Windows:
   `~\GitHub` if that does not exist. The folder question does not complete paths with Tab,
   but takes a path pasted with *Copy as path* (quotes and all).
 - Switches are written the PowerShell way: `-NoFetch`, `-Check`, and `-Root` for
-  `shiny_update_manifests.ps1` (or `$env:ROOT`).
+  `r_shiny_update_manifests.ps1` (or `$env:ROOT`).
 - Missing programs are offered with `winget install` instead of `sudo apt install`. R is
   found where its installer put it, even though it is not on the PATH.
 - `git_clone_all.ps1` needs only git, and clones over HTTPS, which git logs in to through the
@@ -498,7 +498,7 @@ What is different on Windows:
 - `r_install_packages.ps1` has no system packages to install, as R packages for Windows come
   ready built; only a package with C/C++ code needs
   [Rtools](https://cran.r-project.org/bin/windows/Rtools/) to be installed from source.
-- `leave_machine.ps1` also deletes, after asking, the GitHub logins in the Windows Credential
+- `machine_leave.ps1` also deletes, after asking, the GitHub logins in the Windows Credential
   Manager (git's and GitHub Desktop's, which signs GitHub Desktop out), and looks for tokens
   in the PowerShell profiles and history, in R's files in `Documents` (R's `~` on Windows),
   and in user environment variables named like a token (`setx GITHUB_PAT ...`). It deletes a
@@ -506,15 +506,15 @@ What is different on Windows:
   package cache.
 - `hwrt_pi.sh` has no Windows version: it reads what only a Raspberry Pi has.
 - `disk_speed.sh` has no Windows version yet; CrystalDiskMark runs the same tests there.
-- `new_machine.sh` has no Windows version: it sets up Linux Mint.
-- `r_cmd_check_all.sh`, `r_pkgdown_all.sh` and `r_pdf_all.sh` have no Windows version yet.
+- `machine_new.sh` has no Windows version: it sets up Linux Mint.
+- `r_cmd_check.sh`, `r_pkgdown_all.sh` and `r_pdf_all.sh` have no Windows version yet.
 
 ## New computer
 
 ```bash
 sudo apt install git                      # if git is not there yet
 git clone git@github.com:sedzinfo/shell_scripts.git ~/GitHub/shell_scripts
-~/GitHub/shell_scripts/new_machine.sh     # programs, R, drivers, apps
+~/GitHub/shell_scripts/machine_new.sh     # programs, R, drivers, apps
 ~/GitHub/shell_scripts/git_clone_all.sh   # download everything
 ~/GitHub/shell_scripts/git_pull_all.sh    # later: keep it up to date
 ```
