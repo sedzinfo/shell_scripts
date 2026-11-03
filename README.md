@@ -3,8 +3,8 @@
 Small bash scripts: looking after many git repositories at once, and keeping an eye on the machine.
 The git scripts work on `~/GitHub` by default; if that folder does not exist, they ask for one
 (Tab completes paths, `~` works, an empty answer quits). Each one except `hwrt_pi.sh`,
-`machine_new.sh`, `tmux_update_plugins.sh`, `ssh_setup_keys.sh` and `ssh_run_all.sh` also
-comes as a PowerShell script for Windows (`.ps1`); see [Windows](#windows).
+`machine_new.sh` and `tmux_update_plugins.sh` also comes as a PowerShell script for Windows
+(`.ps1`); see [Windows](#windows).
 
 When a program a script needs is missing (`lm-sensors`, `alsa-utils`, `pciutils`,
 `curl`, `jq`, `fio`), the script says what it is for and asks before installing it with
@@ -716,7 +716,8 @@ What is different on Windows:
   `~\GitHub` if that does not exist. The folder question does not complete paths with Tab,
   but takes a path pasted with *Copy as path* (quotes and all).
 - Switches are written the PowerShell way: `-NoFetch`, `-Check`, `-DryRun`, `-Strict`,
-  `-AsCran`, `-Manual`, `-NoExamples`, `-To`, `-List`, `-Size`, `-History`, `-Yes`, `-Time`, `-ReadOnly`, and
+  `-AsCran`, `-Manual`, `-NoExamples`, `-To`, `-List`, `-Size`, `-History`, `-Yes`, `-Time`, `-ReadOnly`,
+  `-Key`, `-Parallel`, and
   `-Root` for `r_shiny_update_manifests.ps1` (or `$env:ROOT`).
 - The logs and working copies that the bash scripts keep in `~/.cache` go to
   `%LOCALAPPDATA%` (e.g. `%LOCALAPPDATA%\r_cmd_check_all`).
@@ -752,8 +753,18 @@ What is different on Windows:
 - `hwrt_pi.sh` has no Windows version: it reads what only a Raspberry Pi has.
 - `machine_new.sh` has no Windows version: it sets up Linux Mint.
 - `tmux_update_plugins.sh` has no Windows version: tmux runs on Linux and macOS (and in WSL).
-- `ssh_setup_keys.sh` has no Windows version yet: Windows has `ssh`, but not `ssh-copy-id`.
-- `ssh_run_all.sh` has no Windows version yet; it goes with `ssh_setup_keys.sh`.
+- `ssh_setup_keys.ps1` and `ssh_run_all.ps1` use the OpenSSH client of Windows 10 and 11
+  (Settings > System > Optional features > OpenSSH Client), and the list in
+  `%USERPROFILE%\.ssh\machines.txt` (`notepad $HOME\.ssh\machines.txt`). Windows has no
+  `ssh-copy-id`, so `ssh_setup_keys.ps1` adds the key itself, the same way (only if it is
+  missing, with the permissions sshd requires). The ssh-agent service is off on Windows until
+  turned on, as administrator, which a key with a passphrase needs for logins without asking:
+  `Get-Service ssh-agent | Set-Service -StartupType Automatic; Start-Service ssh-agent`.
+- `ssh_run_all.ps1` takes the command in quotes (`ssh_run_all.ps1 'df -h /'`), as PowerShell
+  would take a `-h` for an option of the script. One machine after the other, what the command
+  prints goes straight to the window, so that it can ask you things; only `-Parallel` keeps
+  what each machine printed, in `%LOCALAPPDATA%\ssh_run_all` (with `_` for the `:` in the
+  names, which Windows does not allow).
 
 ## New computer
 

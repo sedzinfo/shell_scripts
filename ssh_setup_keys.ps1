@@ -37,9 +37,11 @@ param(
   [switch]$Check
 )
 
-# anything but y/yes is no
+# anything but y/yes is no. Not Read-Host: in PowerShell on Linux and macOS it keeps
+# reading the terminal afterwards, and what you then type for ssh (a password) is lost
 function Test-Yes([string]$question) {
-  $answer = Read-Host "$question [y/N]"
+  Write-Host "$question [y/N]: " -NoNewline
+  $answer = [Console]::ReadLine()
   return $answer -match '^\s*y(es)?\s*$'
 }
 
@@ -50,8 +52,9 @@ function ConvertTo-Argument([string]$value) {
   return '"' + (($value -replace '(\\*)"', '$1$1\"') -replace '(\\+)$', '$1$1') + '"'
 }
 
-# runs a program and waits for it. Windows PowerShell 5.1 passes arguments to programs in a
-# way of its own (it drops empty ones and the quotes inside them), so the command line is
+# runs a program whose output goes to files and waits for it (Start-Process gives it no
+# terminal, so nothing it asks can be answered). Windows PowerShell 5.1 passes arguments to
+# programs in a way of its own (it drops empty ones and the quotes inside them), so the command line is
 # written here, the same for 5.1 and PowerShell 7. With -Output what it prints goes to that
 # file, and its errors to the same name with .err; with -InputFile it reads that file.
 # Returns the exit code
@@ -68,6 +71,17 @@ function Invoke-Program([string]$Program, [string[]]$Arguments, [string]$Output,
   $null = $process.Handle   # without it Windows PowerShell 5.1 loses the exit code
   $process.WaitForExit()
   return $process.ExitCode
+}
+
+# Windows PowerShell 5.1 and PowerShell before 7.3 drop the quotes inside the arguments they
+# give to programs; for those, the quotes (and the backslashes before them) are escaped here
+$legacyArguments = $PSVersionTable.PSVersion -lt [version]'7.3' -or
+  (Get-Variable PSNativeCommandArgumentPassing -ValueOnly -ErrorAction SilentlyContinue) -eq 'Legacy'
+function Protect-Argument([string]$value) {
+  if (-not $legacyArguments) { return $value }
+  $value = $value -replace '(\\*)"', '$1$1\"'
+  if ($value -match '\s') { $value = $value -replace '(\\+)$', '$1$1' }
+  return $value
 }
 
 # what a program printed, and its errors, after Invoke-Program -Output
@@ -188,7 +202,8 @@ if (-not $Key) {
   if (-not (Test-Path -LiteralPath $sshFolder)) { New-Item -ItemType Directory -Path $sshFolder | Out-Null }
   $Key = Join-Path $sshFolder 'id_ed25519'
   $comment = "$([Environment]::UserName)@$([Environment]::MachineName)"
-  if ((Invoke-Program 'ssh-keygen' @('-t', 'ed25519', '-C', $comment, '-f', $Key)) -ne 0) { exit 1 }
+  & ssh-keygen -t ed25519 -C (Protect-Argument $comment) -f (Protect-Argument $Key)
+  if ($LASTEXITCODE -ne 0) { exit 1 }
 } elseif (-not (Test-Path -LiteralPath "$Key.pub")) {
   Write-Host "No public key $Key.pub"; exit 1
 }
@@ -208,7 +223,7 @@ if (Test-Passphrase $Key) {
   if ($held) {
   } elseif ($agent -ne 2 -and -not $Check) {
     Write-Host 'The key has a passphrase: ssh-add asks for it once, so that no login asks for it again'
-    $null = Invoke-Program 'ssh-add' @($Key)
+    & ssh-add (Protect-Argument $Key)
   } else {
     Write-Host 'The key has a passphrase and ssh-agent is not running: logins will ask for the passphrase.' -ForegroundColor Yellow
     Write-Host '  To turn it on for good, in PowerShell as administrator:'
@@ -222,12 +237,10 @@ if ($Check) { Write-Host 'Check only: no key is copied' }
 $addKey = 'umask 077; mkdir -p ~/.ssh; touch ~/.ssh/authorized_keys; key=$(tr -d ''\r''); ' +
   'grep -qxF "$key" ~/.ssh/authorized_keys || { [ -z "$(tail -c 1 ~/.ssh/authorized_keys)" ] || echo >> ~/.ssh/authorized_keys; echo "$key" >> ~/.ssh/authorized_keys; }; ' +
   'chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys'
-$keyFile = [IO.Path]::GetTempFileName()
-[IO.File]::WriteAllText($keyFile, ([IO.File]::ReadAllText("$Key.pub").Trim() + "`n"))
+$publicKey = [IO.File]::ReadAllText("$Key.pub").Trim()
 
 $asks = @(); $unreachable = @(); $already = 0; $setUp = 0; $lineNumber = 0; $seen = @{}
-try {
-  foreach ($line in [IO.File]::ReadAllLines($File)) {
+foreach ($line in [IO.File]::ReadAllLines($File)) {
     $lineNumber++
     $line = $line.Trim()
     if (-not $line -or $line.StartsWith('#')) { continue }
@@ -266,7 +279,10 @@ try {
     }
 
     Write-Host "  copying your key: ssh asks for the password of $name once"
-    if ((Invoke-Program 'ssh' ($machine.Login + @($machine.Destination, $addKey)) -InputFile $keyFile) -ne 0) {
+    # called directly, as only then the terminal is ssh's, so that the password you type reaches it
+    $arguments = @($machine.Login + @($machine.Destination, $addKey) | ForEach-Object { Protect-Argument $_ })
+    $publicKey | & ssh @arguments
+    if ($LASTEXITCODE -ne 0) {
       Write-Host '  the key could not be copied' -ForegroundColor Red
       $asks += $name; continue
     }
@@ -279,10 +295,6 @@ try {
       $asks += $name
     }
   }
-} finally {
-  Remove-Item -LiteralPath $keyFile -ErrorAction SilentlyContinue
-}
-
 Write-Host ''
 Write-Host ('#' * 80)
 if ($already -gt 0) { Write-Host "Already without a password: $already" -ForegroundColor Green }

@@ -26,9 +26,11 @@ param(
   [switch]$Yes
 )
 
-# anything but y/yes is no
+# anything but y/yes is no. Not Read-Host: in PowerShell on Linux and macOS it keeps
+# reading the terminal afterwards, and what you then type for ssh (a password) is lost
 function Test-Yes([string]$question) {
-  $answer = Read-Host "$question [y/N]"
+  Write-Host "$question [y/N]: " -NoNewline
+  $answer = [Console]::ReadLine()
   return $answer -match '^\s*y(es)?\s*$'
 }
 
@@ -39,10 +41,12 @@ function ConvertTo-Argument([string]$value) {
   return '"' + (($value -replace '(\\*)"', '$1$1\"') -replace '(\\+)$', '$1$1') + '"'
 }
 
-# starts a program. Windows PowerShell 5.1 passes arguments to programs in a way of its own
-# (it drops empty ones and the quotes inside them), so the command line is written here, the
-# same for 5.1 and PowerShell 7. With -Output what it prints goes to that file, and its
-# errors to the same name with .err. Returns the process, or with -Wait its exit code
+# starts a program whose output goes to files (Start-Process gives it no terminal, so
+# nothing it asks can be answered). Windows PowerShell 5.1 passes arguments to programs in a
+# way of its own (it drops empty ones and the quotes inside them), so the command line is
+# written here, the same for 5.1 and PowerShell 7. With -Output what it prints goes to that
+# file, and its errors to the same name with .err. Returns the process, or with -Wait its
+# exit code
 function Start-Program([string]$Program, [string[]]$Arguments, [string]$Output, [switch]$Wait) {
   $start = @{
     FilePath     = $Program
@@ -56,6 +60,17 @@ function Start-Program([string]$Program, [string[]]$Arguments, [string]$Output, 
   if (-not $Wait) { return $process }
   $process.WaitForExit()
   return $process.ExitCode
+}
+
+# Windows PowerShell 5.1 and PowerShell before 7.3 drop the quotes inside the arguments they
+# give to programs; for those, the quotes (and the backslashes before them) are escaped here
+$legacyArguments = $PSVersionTable.PSVersion -lt [version]'7.3' -or
+  (Get-Variable PSNativeCommandArgumentPassing -ValueOnly -ErrorAction SilentlyContinue) -eq 'Legacy'
+function Protect-Argument([string]$value) {
+  if (-not $legacyArguments) { return $value }
+  $value = $value -replace '(\\*)"', '$1$1\"'
+  if ($value -match '\s') { $value = $value -replace '(\\+)$', '$1$1' }
+  return $value
 }
 
 # what a program printed, and its errors, after Start-Program -Output
@@ -177,7 +192,10 @@ if (-not $Parallel) {
     Write-Host ('#' * 80)
     Write-Host $machine.Name -ForegroundColor Cyan
     $start = Get-Date
-    $code = Start-Program 'ssh' (Get-SshArguments $machine $first) -Wait
+    # called directly, as only then the terminal is ssh's, so that what you type reaches it
+    $arguments = @(Get-SshArguments $machine $first | ForEach-Object { Protect-Argument $_ })
+    & ssh @arguments
+    $code = $LASTEXITCODE
     Write-Outcome $machine $code ([int]((Get-Date) - $start).TotalSeconds) ''
   }
 } else {
