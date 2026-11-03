@@ -29,6 +29,7 @@ NVIDIA's are never offered.
 | [`r_cmd_check.sh`](r_cmd_check.sh) | Runs R CMD check on every R package and reports which have errors, warnings or notes | No (works in `~/.cache`) |
 | [`r_pkgdown_all.sh`](r_pkgdown_all.sh) | Builds the pkgdown website of every R package and reports failed builds and failing examples | Rewrites each site (`docs/`); commits nothing |
 | [`r_pdf_all.sh`](r_pdf_all.sh) | Makes the PDF reference manual of every R package | Rewrites `<package>.pdf` in each repository, or writes to `--to`; commits nothing |
+| [`r_article_caches.sh`](r_article_caches.sh) | Finds the knitr caches of pkgdown articles that are older than the package functions they use | No (`--clean` deletes the stale caches) |
 | [`machine_new.sh`](machine_new.sh) | Sets up a new computer with Linux Mint with the programs of the old one | Installs, asks before each step |
 | [`machine_leave.sh`](machine_leave.sh) | Before handing back a computer: checks that everything is on GitHub, then removes your repositories, GitHub key and logins | Yes, asks before each step |
 | [`tmux_update_plugins.sh`](tmux_update_plugins.sh) | Updates the tmux plugins (TPM) and repairs what copying their folder broke | Only the plugins; never your tmux configuration |
@@ -456,6 +457,44 @@ the exit code is 1 if any failed. The logs are in `~/.cache/r_pdf_all`.
 Needs R and LaTeX with the inconsolata font: TinyTeX
 (`tinytex::install_tinytex()`), or TeX Live with `texlive-fonts-extra`
 (the LaTeX step of `machine_new.sh`); it offers what is missing.
+
+## r_article_caches.sh
+
+```bash
+r_article_caches.sh                  # every package in ~/GitHub with cached articles
+r_article_caches.sh rwf              # only this one
+r_article_caches.sh --clean          # deletes the stale caches
+r_article_caches.sh --accept         # records every cache as up to date (after a full build)
+```
+
+knitr runs a cached chunk again only when the chunk's own code changes, not when a
+function it calls does. So after a fix in the package, an article can go on showing
+what the old version printed, without any error, and a lazy build
+(`pkgdown::build_site(lazy = TRUE)`, which rebuilds only the articles whose `.Rmd`
+changed) does not even look. This finds those caches: for every article with a
+cache (`vignettes/**/<article>_cache`) it reads which functions of the package its
+chunks call, and also the functions those call, at any depth, and checks whether any
+of them changed after the cache was written:
+
+```text
+vignettes/articles/EXPLORE_ASSUMPTIONS.rmd   stale (cache of 2026-10-29 16:54; by git): report_normality_tests (committed since)
+vignettes/articles/FUNCTIONS_RECODE.rmd      stale: changed since the cache of 2026-10-29 16:54: change_data_type
+vignettes/articles/GLM_FRIEDMAN.rmd          up to date  (cache of 2026-10-29 16:56, 1 function)
+```
+
+Only changes to what a function does count, not comments or layout, `=` for `<-`, or
+braces around a single expression. `--clean` deletes the stale caches and touches
+their articles (their date only, not their content), so that the next lazy build
+rebuilds exactly those. With `--clean` and `--accept` it also keeps, in each cache
+folder, a fingerprint of the functions the article uses (`r_article_caches.txt`, so
+it goes wherever the cache goes, and git ignores it as it ignores the cache), which says from then on exactly which function
+changed. A cache without that record is compared through git: each function as it was
+in the last commit before the cache was written, against the function now, committed
+or not. The exit code is 1 if a stale cache is left, so it can run before every build:
+
+```bash
+r_article_caches.sh rwf --clean && Rscript -e 'pkgdown::build_site("~/GitHub/rwf/rwf", lazy = TRUE)'
+```
 
 ## machine_new.sh
 
