@@ -2,8 +2,9 @@
 
 Small bash scripts: looking after many git repositories at once, and keeping an eye on the machine.
 The git scripts work on `~/GitHub` by default; if that folder does not exist, they ask for one
-(Tab completes paths, `~` works, an empty answer quits). Each one except `hwrt_pi.sh` and
-`machine_new.sh` also comes as a PowerShell script for Windows (`.ps1`); see [Windows](#windows).
+(Tab completes paths, `~` works, an empty answer quits). Each one except `hwrt_pi.sh`,
+`machine_new.sh` and `tmux_update_plugins.sh` also comes as a PowerShell script for Windows
+(`.ps1`); see [Windows](#windows).
 
 When a program a script needs is missing (`lm-sensors`, `alsa-utils`, `pciutils`,
 `curl`, `jq`, `fio`), the script says what it is for and asks before installing it with
@@ -30,6 +31,7 @@ NVIDIA's are never offered.
 | [`r_pdf_all.sh`](r_pdf_all.sh) | Makes the PDF reference manual of every R package | Rewrites `<package>.pdf` in each repository, or writes to `--to`; commits nothing |
 | [`machine_new.sh`](machine_new.sh) | Sets up a new computer with Linux Mint with the programs of the old one | Installs, asks before each step |
 | [`machine_leave.sh`](machine_leave.sh) | Before handing back a computer: checks that everything is on GitHub, then removes your repositories, GitHub key and logins | Yes, asks before each step |
+| [`tmux_update_plugins.sh`](tmux_update_plugins.sh) | Updates the tmux plugins (TPM) and repairs what copying their folder broke | Only the plugins; never your tmux configuration |
 
 ## git_status_all.sh
 
@@ -542,6 +544,35 @@ GitHub, as it needs GitHub to check the repositories. Running `--check` a few
 days before shows what still needs a commit or a push; the exit code is 1
 while any repository is not completely on GitHub.
 
+## tmux_update_plugins.sh
+
+```bash
+tmux_update_plugins.sh             # repairs and updates every plugin
+tmux_update_plugins.sh --dry-run   # only shows what it would do
+```
+
+Updates the plugins that [TPM](https://github.com/tmux-plugins/tpm) installed in
+`~/.tmux/plugins`, without touching your configuration (`~/.tmux.conf`) or the
+sessions tmux-resurrect saved; at the end it checks that the configuration files
+are unchanged, byte for byte. First it repairs what copying the plugin folder
+(from a backup, a USB stick or another computer) breaks: files that lost their
+executable bit, so that tmux cannot run the plugin (`run '~/.tmux/plugins/tpm/tpm'`
+then fails with "Permission denied" and no plugin loads), symlinks turned into plain
+files, missing submodules, and files and folders anyone could write to. It tells
+these apart from edits of your own: a plugin you changed is left as it is. Then it
+updates each plugin from GitHub, only forward, so commits of your own are never lost:
+
+```text
+tmux-resurrect  (git@github.com:tmux-plugins/tmux-resurrect.git)
+  repaired: 9 file permissions, 3 symlinks, submodules, 196 files and folders anyone could write to
+  updated a2ddfb9 -> cff343c, 6 new commits
+```
+
+It also says when apt has a newer tmux and asks before installing it, and lists
+the plugins of your configuration that are not installed. In a running tmux,
+`tmux source-file ~/.tmux.conf` loads the updated plugins. The exit code is 1 if a
+plugin could not be updated.
+
 ## Windows
 
 The `.ps1` scripts do the same as the bash ones, with the same arguments and questions, in
@@ -596,6 +627,7 @@ What is different on Windows:
   as administrator, and without it that drive is skipped.
 - `hwrt_pi.sh` has no Windows version: it reads what only a Raspberry Pi has.
 - `machine_new.sh` has no Windows version: it sets up Linux Mint.
+- `tmux_update_plugins.sh` has no Windows version: tmux runs on Linux and macOS (and in WSL).
 
 ## New computer
 
