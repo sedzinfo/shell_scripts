@@ -4,24 +4,29 @@
 # other, with roxygen2::roxygenise() (what devtools::document() does for one
 # package). r_cmd_check.sh, r_pkgdown_all.sh and r_pdf_all.sh use man/ as it is,
 # so run this first. It reports which packages failed and which files changed,
-# to commit and push. Nothing is committed or pushed.
+# to commit and push. It lists the packages and asks first. Nothing is committed
+# or pushed.
 #   r_document_all.sh [folder] [package ...]   every package, or only the ones named
 #   r_document_all.sh --check                  only lists the packages whose help pages
 #                                              or NAMESPACE are out of date: roxygen
 #                                              runs on a copy, nothing is changed
+#   r_document_all.sh --yes                    without asking first
+# The folder is given as a path (~/GitHub, ., ../work): a plain word is a package.
 # A package is a folder with a DESCRIPTION: a repository, or a folder in one
 # (rwf/rwf). Mirror repositories with the same package (crypto and golemcrypto)
 # are each documented. Packages without roxygen comments are skipped. The exit
 # code is 1 if any failed, or with --check if any is out of date.
 
-root="$HOME/GitHub"; check=0; only=(); root_given=0
+root="$HOME/GitHub"; check=0; yes=0; only=(); root_given=0
 for arg in "$@"; do
   case "$arg" in
     --check)   check=1 ;;
+    --yes)     yes=1 ;;
     -h|--help) sed -n '2,/^$/{s/^# \{0,1\}//;p}' "$0"; exit 0 ;;
     -*)        echo "Unknown option: $arg (see --help)"; exit 1 ;;
     *)
-      if [ $root_given -eq 0 ] && [ -d "${arg/#\~/$HOME}" ]; then
+      # a path is the folder (a package's name may also be a folder here)
+      if [ $root_given -eq 0 ] && [[ "$arg" == */* || "$arg" == '~' || "$arg" == . || "$arg" == .. ]]; then
         root="${arg/#\~/$HOME}"; root_given=1
       else
         only+=("$arg")
@@ -98,7 +103,8 @@ uses_roxygen() {
 dirs=(); no_roxygen=()
 while IFS= read -r description; do
   dir=$(dirname "$description")
-  name=$(awk -F': *' '$1 == "Package" { print $2; exit }' "$description")
+  # without the \r of a DESCRIPTION saved on Windows
+  name=$(awk -F': *' '$1 == "Package" { sub(/[ \t\r]+$/, "", $2); print $2; exit }' "$description")
   [ -n "$name" ] || continue
   if [ ${#only[@]} -gt 0 ]; then
     wanted=0
@@ -134,6 +140,11 @@ remove_copy() {
 }
 trap remove_copy EXIT
 trap 'exit 130' INT TERM
+# copies left by a run that was closed before it could remove them (rm does not
+# follow their links)
+for old in "$out"/copy.?*; do
+  [ -d "$old" ] && rm -rf -- "$old"
+done
 
 # minutes and seconds
 duration() { printf '%dm%02ds' $(($1 / 60)) $(($1 % 60)); }
@@ -179,14 +190,22 @@ if [ $check -eq 1 ]; then
   echo "Checking ${#dirs[@]} package(s) in $root against their roxygen comments (roxygen2 $installed); logs in $out"
 else
   echo "Documenting ${#dirs[@]} package(s) in $root (roxygen2 $installed); logs in $out"
+  # the question before anything is changed
+  if [ $yes -eq 0 ]; then
+    echo "Their help pages and NAMESPACE are written anew: $(for dir in "${dirs[@]}"; do printf '%s ' "${dir#"$root"/}"; done)"
+    if [ ! -t 0 ]; then
+      echo "Not a terminal, so nothing can be asked: add --yes to update them"; exit 1
+    fi
+    yes_no "Update them?" || { echo "Nothing was changed"; exit 0; }
+  fi
 fi
 [ ${#no_roxygen[@]} -gt 0 ] && echo "Skipped, no roxygen comments: ${no_roxygen[*]}"
 
 failed=(); out_of_date=(); to_commit=(); summary=()
 for dir in "${dirs[@]}"; do
   label=${dir#"$root"/}
-  name=$(awk -F': *' '$1 == "Package" { print $2; exit }' "$dir/DESCRIPTION")
-  recorded=$(awk -F': *' '$1 == "Config/roxygen2/version" || $1 == "RoxygenNote" { print $2; exit }' "$dir/DESCRIPTION")
+  name=$(awk -F': *' '$1 == "Package" { sub(/[ \t\r]+$/, "", $2); print $2; exit }' "$dir/DESCRIPTION")
+  recorded=$(awk -F': *' '$1 == "Config/roxygen2/version" || $1 == "RoxygenNote" { sub(/[ \t\r]+$/, "", $2); print $2; exit }' "$dir/DESCRIPTION")
   log="$out/${label//\//_}.log"
   echo
   separator
@@ -221,7 +240,7 @@ for dir in "${dirs[@]}"; do
         echo "    written with roxygen2 $recorded, this is $installed: some differences may only be layout"
     else
       result="updated $count files"
-      to_commit+=("$(git -C "$dir" rev-parse --show-toplevel 2> /dev/null | xargs -r basename)")
+      top=$(git -C "$dir" rev-parse --show-toplevel 2> /dev/null) && to_commit+=("${top##*/}")
       echo "  ${green}$result${reset}: $files"
     fi
     # roxygen's warnings (lines starting with ✖ or !), such as a @param without
@@ -250,7 +269,7 @@ if [ ${#out_of_date[@]} -gt 0 ]; then
   echo "${yellow}Out of date in ${#out_of_date[@]}:${reset} ${out_of_date[*]}"
   echo "  r_document_all.sh ${out_of_date[*]##*/} updates them; git diff then shows what changed"
 fi
-to_commit=($(printf '%s\n' "${to_commit[@]}" | grep . | sort -u))
+mapfile -t to_commit < <(printf '%s\n' "${to_commit[@]}" | grep . | sort -u)
 if [ ${#to_commit[@]} -gt 0 ]; then
   echo "Changed, to commit and push: ${to_commit[*]}"
 fi

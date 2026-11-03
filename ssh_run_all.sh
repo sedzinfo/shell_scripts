@@ -2,7 +2,7 @@
 # Runs a command on every machine of your list (~/.ssh/machines.txt, the list of
 # ssh_setup_keys.sh, with the same format), and shows what each machine printed
 # and whether the command worked there:
-#   ssh_run_all.sh 'sudo apt update && sudo apt full-upgrade -y'
+#   ssh_run_all.sh 'sudo apt update && sudo apt dist-upgrade -y && sudo apt autoremove -y'
 #   ssh_run_all.sh 'df -h /'
 #   ssh_run_all.sh uptime
 # It shows the command and the machines, and asks before running it. One machine
@@ -17,8 +17,8 @@
 #   --parallel             all machines at the same time
 #   --yes                  runs without asking first
 # What each machine printed stays in ~/.cache/ssh_run_all until the next run.
-# The exit code is 1 if the command failed on a machine or a machine could not
-# be reached.
+# The exit code is 1 if the command failed on a machine, or a machine could not
+# be reached or asked for a password.
 
 file="$HOME/.ssh/machines.txt"; parallel=0; yes=0; command_words=()
 # the options come first; from the first other word on, everything is the command
@@ -82,7 +82,8 @@ parse_line() {
   done
 }
 
-# the machines of the list, each once, as user@host:port
+# the machines of the list, each once, as user@host:port (and the jump host, as
+# the same address behind two jump hosts is two machines)
 lines=(); labels=(); line_number=0
 declare -A seen=()
 while IFS= read -r line || [ -n "$line" ]; do
@@ -93,7 +94,10 @@ while IFS= read -r line || [ -n "$line" ]; do
   if [ -z "$destination" ] || ! resolved=$(ssh -G "${login_args[@]}" "$destination" 2> /dev/null); then
     echo "${yellow}line $line_number is not a machine ssh understands, skipped: $line${reset}"; continue
   fi
-  label=$(awk '$1 == "user" {u = $2} $1 == "hostname" {h = $2} $1 == "port" {p = $2} END {print u "@" h ":" p}' <<< "$resolved")
+  label=$(awk '$1 == "user" {u = $2} $1 == "hostname" {h = $2} $1 == "port" {p = $2}
+    $1 == "proxyjump" && $2 != "none" {j = " via " $2}
+    $1 == "proxycommand" && $2 != "none" {j = " via " substr($0, length($1) + 2)}
+    END {print u "@" h ":" p j}' <<< "$resolved")
   [ -n "${seen[$label]:-}" ] && continue
   seen[$label]=1
   lines+=("$line"); labels+=("$label")
@@ -128,22 +132,28 @@ run_on() {
 # file name of a machine's log
 log_of() { echo "$logs/${1//\//_}.log"; }
 
-# what happened on a machine, from its exit code and log
+# what happened on machine number $1, from its exit code. 255 is the code of ssh
+# when it cannot log in, but a command can end with it too: a second login,
+# without the command, tells them apart, and says why ssh could not log in
 ok=(); failed=(); asks=(); unreachable=()
 outcome() {
-  local label=$1 status=$2 seconds=$3 log
-  log=$(log_of "$label")
+  local label=${labels[$1]} status=$2 seconds=$3 probe
   if [ "$status" -eq 0 ]; then
-    echo "  ${green}done in ${seconds}s${reset}"; ok+=("$label")
-  elif [ "$status" -eq 255 ] && grep -qE "Permission denied|No more authentication methods" "$log"; then
-    echo "  ${yellow}asks for a password: skipped (ssh_setup_keys.sh sets up the key)${reset}"; asks+=("$label")
-  elif [ "$status" -eq 255 ] && grep -q "Host key verification failed" "$log"; then
-    echo "  ${yellow}not known yet: log in once with ssh to confirm its fingerprint${reset}"; unreachable+=("$label")
-  elif [ "$status" -eq 255 ] && grep -qE "^ssh: |Connection (timed out|refused|closed)" "$log"; then
-    echo "  ${red}cannot reach it: $(grep -E "^ssh: |Connection" "$log" | tail -n 1 | tr -d '\r')${reset}"; unreachable+=("$label")
-  else
-    echo "  ${red}failed with exit code $status, after ${seconds}s${reset}"; failed+=("$label ($status)")
+    echo "  ${green}done in ${seconds}s${reset}"; ok+=("$label"); return
   fi
+  if [ "$status" -eq 255 ]; then
+    parse_line "${lines[$1]}"
+    if probe=$(ssh -n -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR "${login_args[@]}" "$destination" exit 2>&1); then
+      :   # it logs in, so the 255 is the command's
+    elif grep -qE "Permission denied|No more authentication methods" <<< "$probe"; then
+      echo "  ${yellow}asks for a password: skipped (ssh_setup_keys.sh sets up the key)${reset}"; asks+=("$label"); return
+    elif grep -q "Host key verification failed" <<< "$probe"; then
+      echo "  ${yellow}not known yet: log in once with ssh to confirm its fingerprint${reset}"; unreachable+=("$label"); return
+    else
+      echo "  ${red}cannot reach it: $(grep . <<< "$probe" | tail -n 1 | tr -d '\r')${reset}"; unreachable+=("$label"); return
+    fi
+  fi
+  echo "  ${red}failed with exit code $status, after ${seconds}s${reset}"; failed+=("$label ($status)")
 }
 
 if [ $parallel -eq 0 ]; then
@@ -159,7 +169,7 @@ if [ $parallel -eq 0 ]; then
       run_on "$i" 2>&1 < /dev/null | tee "$(log_of "${labels[$i]}")"
     fi
     status=${PIPESTATUS[0]}
-    outcome "${labels[$i]}" "$status" $((SECONDS - start))
+    outcome "$i" "$status" $((SECONDS - start))
   done
 else
   declare -A pid_of=() started=()
@@ -180,7 +190,7 @@ else
     separator
     echo "${bold}${labels[$i]}${reset}"
     cat "$(log_of "${labels[$i]}")"
-    outcome "${labels[$i]}" "${status_of[$i]}" "${seconds_of[$i]}"
+    outcome "$i" "${status_of[$i]}" "${seconds_of[$i]}"
   done
 fi
 
@@ -191,4 +201,4 @@ separator
 [ ${#asks[@]} -gt 0 ] && echo "${yellow}Ask for a password, skipped: ${asks[*]}${reset}"
 [ ${#unreachable[@]} -gt 0 ] && echo "${red}Could not reach: ${unreachable[*]}${reset}"
 echo "What each machine printed: $logs"
-[ ${#failed[@]} -eq 0 ] && [ ${#unreachable[@]} -eq 0 ]
+[ ${#failed[@]} -eq 0 ] && [ ${#unreachable[@]} -eq 0 ] && [ ${#asks[@]} -eq 0 ]

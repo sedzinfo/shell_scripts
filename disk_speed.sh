@@ -30,7 +30,7 @@ while [ $# -gt 0 ]; do
 	esac
 	shift
 done
-if ! size_bytes=$(numfmt --from=iec "${size^^}" 2> /dev/null) || [ "$size_bytes" -lt 1048576 ]; then
+if ! size_bytes=$(LC_ALL=C numfmt --from=iec "${size^^}" 2> /dev/null) || [ "$size_bytes" -lt 1048576 ]; then
 	echo "--size takes a size such as 256M or 1G, not: $size"; exit 1
 fi
 if ! [[ "$seconds" =~ ^[0-9]+$ ]] || [ "$seconds" -eq 0 ]; then
@@ -172,7 +172,8 @@ fio_test() {
 	if [ "$direct" -eq 0 ] && [[ "$rw" == *read ]]; then
 		sync; echo 3 > /proc/sys/vm/drop_caches
 	fi
-	fio --name=disk_speed --filename="$target" --size="$test_bytes" --rw="$rw" --bs="$block" \
+	# fio takes a : in a file name as the start of another file, unless escaped
+	fio --name=disk_speed --filename="${target//:/\\:}" --size="$test_bytes" --rw="$rw" --bs="$block" \
 		--iodepth="$depth" --ioengine="$engine" --direct="$direct" --runtime="$seconds" --time_based \
 		--output-format=json "$@" 2> /dev/null |
 		awk '/"bw_bytes"/ { gsub(/[^0-9]/, "", $3); if ($3 + 0 > max) max = $3 + 0 }
@@ -184,7 +185,7 @@ fio_test() {
 # written: reading empty space would be faster than reading data.
 write_test_file() {
 	rm -f "$test_file"
-	fio --name=disk_speed --filename="$test_file" --size="$size_bytes" --rw=write --bs=1M --iodepth=8 \
+	fio --name=disk_speed --filename="${test_file//:/\\:}" --size="$size_bytes" --rw=write --bs=1M --iodepth=8 \
 		--ioengine="$engine" --direct="$direct" --fallocate=none --runtime=30 --end_fsync=1 \
 		--output-format=json > /dev/null 2>&1 && [ -s "$test_file" ]
 }

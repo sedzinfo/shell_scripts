@@ -68,8 +68,12 @@ if ! Rscript -e 'quit(status = !requireNamespace("pak", quietly = TRUE))' 2> /de
   Rscript -e 'install.packages("pak", lib = Sys.getenv("R_LIBS_USER"), repos = sprintf("https://r-lib.github.io/p/pak/stable/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))' || exit 1
 fi
 
-# the R package of the repository: a DESCRIPTION at its top or one folder down (rwf/rwf)
-description=$(find "$repo" -maxdepth 2 -name DESCRIPTION -not -path "*/.git/*" -not -path "*.Rcheck/*" -not -path "*/renv/*" | head -1)
+# the R package of the repository: a DESCRIPTION at its top, or else one folder down (rwf/rwf)
+if [ -f "$repo/DESCRIPTION" ]; then
+  description="$repo/DESCRIPTION"
+else
+  description=$(find "$repo" -mindepth 2 -maxdepth 2 -name DESCRIPTION -not -path "*/.git/*" -not -path "*.Rcheck/*" -not -path "*/renv/*" | sort | head -1)
+fi
 
 # pak knows Ubuntu and Debian but not the systems built on them (Linux Mint,
 # Pop!_OS, ...), so those are given as the Ubuntu version they are built on
@@ -100,8 +104,14 @@ REPO="$repo" DESCRIPTION_FILE="$description" OUT="$list" PLATFORM="$platform" Rs
     wanted <- unlist(lapply(d[!is.na(d)], function(x) trimws(sub("\\(.*", "", strsplit(x, ",")[[1]]))))
     cat("From", sub(paste0(dirname(repo), "/"), "", description), "\n")
   } else {
-    if (!requireNamespace("renv", quietly = TRUE)) pak::pkg_install("renv", ask = FALSE)
-    wanted <- unique(renv::dependencies(repo, progress = FALSE, quiet = TRUE)$Package)
+    # pak reads the library() and :: calls itself, so nothing is installed for it
+    if ("scan_deps" %in% getNamespaceExports("pak")) {
+      wanted <- unique(pak::scan_deps(repo, root = repo)$package)
+    } else if (requireNamespace("renv", quietly = TRUE)) {
+      wanted <- unique(renv::dependencies(repo, progress = FALSE, quiet = TRUE)$Package)
+    } else {
+      stop("this pak is too old to read the files: pak::pak_update() updates it", call. = FALSE)
+    }
     cat("From the library() and :: calls of the .R/.Rmd/.qmd files\n")
   }
   base <- rownames(installed.packages(priority = "base"))
@@ -115,9 +125,12 @@ REPO="$repo" DESCRIPTION_FILE="$description" OUT="$list" PLATFORM="$platform" Rs
     if (nzchar(platform)) pak::pkg_sysreqs(wanted, dependencies = NA, sysreqs_platform = platform)
     else pak::pkg_sysreqs(wanted, dependencies = NA),
     error = function(e) { cat("Could not work out the system packages for this system:", conditionMessage(e), "\n"); NULL })
+  if (is.null(s)) out <- c(out, "UNKNOWN system packages")
   if (!is.null(s)) {
     apt <- unlist(strsplit(sub(".*install\\s+", "", grep("install", s$install_scripts, value = TRUE)), "\\s+"))
-    out <- c(out, paste("APT", apt[nzchar(apt)]), if (length(s$post_install)) paste("POST", s$post_install))
+    # paste() of nothing would still give "APT ", a line without a package
+    apt <- apt[nzchar(apt)]
+    out <- c(out, if (length(apt)) paste("APT", apt), if (length(s$post_install)) paste("POST", s$post_install))
   }
   writeLines(out, Sys.getenv("OUT"))
 ' || exit 1
@@ -125,7 +138,7 @@ REPO="$repo" DESCRIPTION_FILE="$description" OUT="$list" PLATFORM="$platform" Rs
 # 1. system packages: only the ones not installed yet
 missing_apt=()
 while read -r kind name; do
-  [ "$kind" = "APT" ] || continue
+  [ "$kind" = "APT" ] && [ -n "$name" ] || continue
   dpkg-query -W -f='${Status}' "$name" 2> /dev/null | grep -q "install ok installed" && continue
   # pandoc and Java are often there without these packages (pandoc from
   # RStudio or a download, Java as openjdk-21-jdk), which is just as good
@@ -133,7 +146,9 @@ while read -r kind name; do
   [ "$name" = "default-jdk" ] && command -v javac > /dev/null && continue
   missing_apt+=("$name")
 done < "$list"
-if [ ${#missing_apt[@]} -eq 0 ]; then
+if grep -q '^UNKNOWN ' "$list"; then
+  echo "System packages: not known (see above), so none are installed"
+elif [ ${#missing_apt[@]} -eq 0 ]; then
   echo "System packages: all installed"
 elif command -v apt-get > /dev/null; then
   echo "System packages not installed (${#missing_apt[@]}):"

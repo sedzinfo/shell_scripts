@@ -8,11 +8,14 @@
 # using a function when its chunks call it, or call a function of the package
 # that calls it, at any depth.
 #   r_article_caches.sh [folder] [package ...]   every package, or only the ones named
-#   r_article_caches.sh --clean                  deletes the stale caches, and touches
-#                                                their article so that a lazy build
-#                                                rebuilds it
-#   r_article_caches.sh --accept                 records every cache as up to date
-#                                                (after a full build)
+#   r_article_caches.sh --clean                  deletes the stale caches, after asking,
+#                                                and touches their article so that a
+#                                                lazy build rebuilds it
+#   r_article_caches.sh --clean --yes            without asking
+#   r_article_caches.sh --accept                 records every cache as up to date (after
+#                                                the articles were built anew, with their
+#                                                caches deleted)
+# The folder is given as a path (~/GitHub, ., ../work): a plain word is a package.
 # With --clean and --accept it records, in each cache folder, a fingerprint of
 # the functions the article uses (r_article_caches.txt); from then on a function
 # whose code changed is found exactly, and named. For a cache without that record
@@ -22,21 +25,29 @@
 # or braces around a single expression. The exit code is 1
 # if a stale cache is left.
 
-root="$HOME/GitHub"; mode=report; only=(); root_given=0
+root="$HOME/GitHub"; clean=0; accept=0; yes=0; only=(); root_given=0
 for arg in "$@"; do
   case "$arg" in
-    --clean)   mode=clean ;;
-    --accept)  mode=accept ;;
+    --clean)   clean=1 ;;
+    --accept)  accept=1 ;;
+    --yes)     yes=1 ;;
     -h|--help) sed -n '2,/^$/{s/^# \{0,1\}//;p}' "$0"; exit 0 ;;
     -*)        echo "Unknown option: $arg (see --help)"; exit 1 ;;
     *)
-      if [ $root_given -eq 0 ] && [ -d "${arg/#\~/$HOME}" ]; then
+      # a path is the folder (a package's name may also be a folder here)
+      if [ $root_given -eq 0 ] && [[ "$arg" == */* || "$arg" == '~' || "$arg" == . || "$arg" == .. ]]; then
         root="${arg/#\~/$HOME}"; root_given=1
       else
         only+=("$arg")
       fi ;;
   esac
 done
+if [ $clean -eq 1 ] && [ $accept -eq 1 ]; then
+  echo "Either --clean or --accept, not both"; exit 1
+fi
+mode=report
+[ $clean -eq 1 ] && mode=clean
+[ $accept -eq 1 ] && mode=accept
 
 # ask for the folder until one that exists is given (Tab completes paths, ~ works)
 while [ ! -d "$root" ]; do
@@ -52,6 +63,13 @@ red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; bold=$'\e[1m'; reset=$'\e[0m'
 # a line of 80 # characters, between the packages
 separator() { printf '#%.0s' {1..80}; printf '\n'; }
 
+# anything but y/yes is no
+yes_no() {
+  local answer
+  read -r -p "$1 [y/N]: " answer
+  [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]
+}
+
 command -v Rscript > /dev/null || { echo "R is needed (sudo apt install r-base)"; exit 1; }
 
 # the R part: for one package and mode, one line per cached article, tab separated:
@@ -60,6 +78,9 @@ read -r -d '' analysis <<'EOF'
 args <- commandArgs(trailingOnly = TRUE)
 package <- args[1]; mode <- args[2]
 record_name <- "r_article_caches.txt"
+# with --clean, only the caches of these articles (one per line) are deleted: the ones you
+# agreed to after the report
+approved <- strsplit(Sys.getenv("R_ARTICLE_CACHES_DELETE"), "\n", fixed = TRUE)[[1]]
 # an argument for git, quoted as the system starts programs (Windows has no ' quotes)
 q <- function(x) shQuote(x, type = if (.Platform$OS.type == "windows") "cmd" else "sh")
 git_ok <- nzchar(Sys.which("git")) &&
@@ -93,8 +114,10 @@ read_functions <- function(text) {
       definition <- e[[3]]
       if (length(definition) >= 4) definition[[4]] <- NULL   # the source reference, with the comments
       code <- paste(deparse(normalize(definition)), collapse = "\n")
+      # the names the body uses, and the ones its default arguments use
+      defaults <- lapply(as.list(definition[[2]]), function(a) if (is.call(a) || (is.name(a) && nzchar(as.character(a)))) all.names(a))
       found[[as.character(e[[2]])]] <- list(start = refs[[k]][1], end = refs[[k]][3],
-        hash = unname(tools::md5sum(bytes = charToRaw(code))), uses = unique(all.names(definition)))
+        hash = unname(tools::md5sum(bytes = charToRaw(code))), uses = unique(c(all.names(definition[[3]]), unlist(defaults))))
     }
   }
   found
@@ -109,6 +132,11 @@ for (file in list.files(file.path(package, "R"), pattern = "\\.[Rr]$", full.name
 }
 known <- names(functions)
 
+# the functions of the package among some names, and the S3 methods of the ones that are
+# generics (print.myclass for print, summarise.default for summarise), which a call of the
+# generic runs
+used_of <- function(names) union(intersect(names, known), known[sub("\\..*$", "", known) %in% names])
+
 # a function and every function of the package it calls, at any depth
 closure <- function(roots) {
   seen <- character(); queue <- roots
@@ -116,7 +144,7 @@ closure <- function(roots) {
     name <- queue[1]; queue <- queue[-1]
     if (name %in% seen) next
     seen <- c(seen, name)
-    queue <- c(queue, setdiff(intersect(functions[[name]]$uses, known), seen))
+    queue <- c(queue, setdiff(used_of(functions[[name]]$uses), seen))
   }
   seen
 }
@@ -130,12 +158,26 @@ functions_in <- function(file, commit) {
   if (exists(key, envir = versions, inherits = FALSE)) return(get(key, envir = versions))
   path <- git(dirname(file), "ls-files", "--full-name", "--", q(basename(file)))
   found <- NULL
-  if (length(path) && length(commit) && nzchar(commit)) {
+  if (length(path) && length(commit) && !is.na(commit) && nzchar(commit)) {
     text <- git(dirname(file), "show", q(paste0(commit, ":", path[1])))
     found <- if (is.null(attr(text, "status"))) read_functions(text) else list()
   }
   assign(key, found, envir = versions)
   found
+}
+# the functions of every R file of the package in a commit, for a function that has moved to
+# another file since
+all_functions_in <- function(commit) {
+  key <- paste("all", commit)
+  if (!exists(key, envir = versions, inherits = FALSE)) {
+    found <- list()
+    for (path in git(package, "ls-tree", "--name-only", "--full-name", q(commit), "--", "R/")) {
+      text <- git(package, "show", q(paste0(commit, ":", path)))
+      if (is.null(attr(text, "status"))) found <- c(found, read_functions(text))
+    }
+    assign(key, found, envir = versions)
+  }
+  get(key, envir = versions)
 }
 # the last commit before a time
 commits <- new.env()
@@ -153,13 +195,16 @@ commit_before <- function(time) {
 # saved since then counts as a change. Returns how it changed, or NULL
 changed_since <- function(name, time) {
   f <- functions[[name]]
-  then <- if (git_ok) functions_in(f$file, commit_before(time)) else NULL
+  commit <- if (git_ok) commit_before(time) else NA
+  then <- if (!is.na(commit)) functions_in(f$file, commit) else NULL
   if (is.null(then)) {
     return(if (file.mtime(f$file) > time) "saved since" else NULL)
   }
-  if (is.null(then[[name]]) || then[[name]]$hash == f$hash) return(NULL)   # new since, or the same
+  old <- then[[name]]
+  if (is.null(old)) old <- all_functions_in(commit)[[name]]   # moved from another file since
+  if (is.null(old) || old$hash == f$hash) return(NULL)   # new since, or the same
   head <- functions_in(f$file, "HEAD")
-  if (!is.null(head[[name]]) && head[[name]]$hash == then[[name]]$hash) "not committed yet" else "committed since"
+  if (!is.null(head[[name]]) && head[[name]]$hash == old$hash) "not committed yet" else "committed since"
 }
 
 # the record of a cache: the hash of every function the article uses
@@ -182,32 +227,37 @@ for (article in articles) {
     if (inside && grepl("^\\s*```+\\s*$", line)) { inside <- FALSE; next }
     if (inside) code <- c(code, line)
   }
-  words <- unique(unlist(regmatches(code, gregexpr("[A-Za-z.][A-Za-z0-9._]*", code))))
-  uses <- closure(intersect(words, known))
+  words <- unique(unlist(regmatches(code, gregexpr("%[^% ]+%|[A-Za-z.][A-Za-z0-9._]*", code))))
+  uses <- closure(used_of(words))
   if (!length(results)) {
     # deleted by --clean and not built since: the next build uses the code as it is now,
     # so that is what --clean and --accept record
     if (mode %in% c("clean", "accept")) write_record(cache, uses)
-    cat("empty", relative, "", 0, "", sep = "\t", fill = TRUE)
+    cat("empty", relative, "", 0, "", sep = "\t")
+    cat("\n")
     next
   }
   written <- file.mtime(results)
   cached_at <- min(written)
-  if (file.exists(record)) {
+  # a record written before the cache was (by --clean, then the code changed before the
+  # build) does not tell what the cache was made with: git does
+  if (file.exists(record) && file.mtime(record) >= max(written)) {
     old <- tryCatch(read.delim(record, header = FALSE, col.names = c("name", "hash"), colClasses = "character", quote = ""),
                     error = function(e) data.frame(name = character(), hash = character()))
     old <- setNames(old$hash, old$name)
     now <- vapply(uses, function(n) functions[[n]]$hash, "")
     changed <- uses[uses %in% names(old) & old[uses] != now]
-    status <- if (length(changed)) "stale" else "ok"
-    details <- paste(changed, collapse = ", ")
+    # a function the cache was made with that the package no longer has
+    gone <- setdiff(names(old), known)
+    status <- if (length(changed) || length(gone)) "stale" else "ok"
+    details <- paste(c(changed, if (length(gone)) paste(gone, "(removed)")), collapse = ", ")
   } else {
     how <- lapply(uses, changed_since, time = cached_at); names(how) <- uses
     after <- uses[!vapply(how, is.null, NA)]
     status <- if (length(after)) "probably" else "unrecorded"
     details <- paste(vapply(after, function(n) sprintf("%s (%s)", n, how[[n]]), ""), collapse = ", ")
   }
-  if (mode == "clean" && status %in% c("stale", "probably")) {
+  if (mode == "clean" && status %in% c("stale", "probably") && relative %in% approved) {
     unlink(cache, recursive = TRUE)
     write_record(cache, uses)
     Sys.setFileTime(article, Sys.time())
@@ -225,10 +275,10 @@ for (article in articles) {
 EOF
 
 # the packages: every folder with a DESCRIPTION that has cached articles
-dirs=()
+dirs=(); matched=0
 while IFS= read -r description; do
   dir=$(dirname "$description")
-  name=$(awk -F': *' '$1 == "Package" { print $2; exit }' "$description")
+  name=$(awk -F': *' '$1 == "Package" { sub(/[ \t\r]+$/, "", $2); print $2; exit }' "$description")
   [ -n "$name" ] || continue
   if [ ${#only[@]} -gt 0 ]; then
     wanted=0
@@ -237,12 +287,17 @@ while IFS= read -r description; do
     done
     [ $wanted -eq 1 ] || continue
   fi
+  matched=$((matched + 1))
   [ -n "$(find "$dir/vignettes" -type d -name '*_cache' -print -quit 2> /dev/null)" ] && dirs+=("$dir")
 done < <(find "$root" -maxdepth 3 \
            \( -name .git -o -name '*.Rcheck' -o -name renv -o -name venv -o -name .venv -o -name node_modules \) -prune \
            -o -name DESCRIPTION -type f -print | sort)
-if [ ${#dirs[@]} -eq 0 ]; then
-  echo "No R packages${only[*]:+ named ${only[*]}} with cached articles in $root"; exit 1
+# packages without cached articles have no stale caches, so that is no failure (and a
+# build after this, in a fresh clone, still runs)
+if [ ${#dirs[@]} -eq 0 ] && [ $matched -gt 0 ]; then
+  echo "No cached articles in the R packages${only[*]:+ named ${only[*]}} of $root"; exit 0
+elif [ ${#dirs[@]} -eq 0 ]; then
+  echo "No R packages${only[*]:+ named ${only[*]}} in $root"; exit 1
 fi
 
 # the R part as a file (Rscript -e takes 10000 bytes at most), removed at the end
@@ -251,19 +306,27 @@ trap 'rm -f -- "$program"' EXIT
 printf '%s\n' "$analysis" > "$program"
 
 case "$mode" in
-  clean)  echo "Deleting the stale caches of the articles in $root" ;;
+  clean)  echo "Caches of the articles in $root: the stale ones are listed, then deleted after asking" ;;
   accept) echo "Recording the caches of the articles in $root as up to date" ;;
   *)      echo "Caches of the articles in $root (nothing is changed; --clean deletes the stale ones)" ;;
 esac
 
-stale_left=0; cleaned=0; failed=()
-for dir in "${dirs[@]}"; do
+# the R part on one package; with clean, it deletes only the caches of the articles in
+# $3 (one per line)
+analyse() { R_ARTICLE_CACHES_DELETE=$3 Rscript "$program" "$1" "$2" 2>&1; }
+
+# first what each cache is; --clean deletes nothing yet, and lists the stale ones of
+# each package in stale_of
+first=$mode; [ "$mode" = clean ] && first=report
+stale_left=0; cleaned=0; failed=(); stale_of=(); unread=()
+for i in "${!dirs[@]}"; do
+  dir=${dirs[$i]}
   echo
   separator
   echo "${bold}${dir#"$root"/}${reset}"
-  if ! output=$(Rscript "$program" "$dir" "$mode" 2>&1); then
+  if ! output=$(analyse "$dir" "$first" ""); then
     echo "  ${red}could not be read:${reset}"; echo "$output" | tail -n 5 | sed 's/^/    /'
-    failed+=("${dir#"$root"/}"); continue
+    failed+=("${dir#"$root"/}"); unread[$i]=1; continue
   fi
   while IFS=$'\t' read -r status article cached_at uses details; do
     [ -n "$article" ] || continue
@@ -274,14 +337,43 @@ for dir in "${dirs[@]}"; do
       unrecorded)  echo "${green}no function changed since the cache${reset}  ($cached_at, $functions)" ;;
       recorded)    echo "${green}up to date, now recorded${reset}  ($cached_at)" ;;
       accepted)    echo "${green}recorded as up to date${reset}  ($cached_at)" ;;
-      stale)       echo "${red}stale${reset}: changed since the cache of $cached_at: $details"; stale_left=$((stale_left + 1)) ;;
-      probably)    echo "${yellow}stale${reset} (cache of $cached_at; by git): $details"; stale_left=$((stale_left + 1)) ;;
-      *+cleaned)   echo "${green}cache deleted${reset}: $details"; cleaned=$((cleaned + 1)) ;;
+      stale)       echo "${red}stale${reset}: changed since the cache of $cached_at: $details"
+                   stale_left=$((stale_left + 1)); stale_of[$i]+="$article"$'\n' ;;
+      probably)    echo "${yellow}stale${reset} (cache of $cached_at; by git): $details"
+                   stale_left=$((stale_left + 1)); stale_of[$i]+="$article"$'\n' ;;
       empty)       echo "cache deleted, not built again yet" ;;
       *)           echo "$status $details" ;;
     esac
   done <<< "$output"
 done
+
+# --clean: the question, then the stale caches deleted (only the ones listed), and the
+# fingerprint recorded in the others
+if [ "$mode" = clean ]; then
+  delete=1
+  if [ $stale_left -gt 0 ] && [ $yes -eq 0 ]; then
+    echo
+    if [ ! -t 0 ]; then
+      echo "Not a terminal, so nothing can be asked: add --yes to delete them"; delete=0
+    elif ! yes_no "Delete the $stale_left stale caches above?"; then
+      delete=0
+    fi
+  fi
+  if [ $delete -eq 1 ]; then
+    for i in "${!dirs[@]}"; do
+      [ -n "${unread[$i]:-}" ] && continue
+      output=$(analyse "${dirs[$i]}" clean "${stale_of[$i]:-}") || continue
+      while IFS=$'\t' read -r status article _; do
+        if [[ "$status" == *+cleaned ]]; then
+          echo "  ${green}cache deleted${reset}: ${dirs[$i]#"$root"/}/$article"
+          cleaned=$((cleaned + 1)); stale_left=$((stale_left - 1))
+        fi
+      done <<< "$output"
+    done
+  else
+    echo "Nothing was deleted"
+  fi
+fi
 
 echo
 separator

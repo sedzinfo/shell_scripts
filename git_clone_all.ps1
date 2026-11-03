@@ -3,7 +3,7 @@
 #   git_clone_all.ps1 [folder] [user] [-Ssh]
 # It clones over HTTPS, which git logs in to through the Git Credential Manager, as GitHub
 # Desktop does; with -Ssh it clones over SSH, with the SSH key of this computer.
-# Private repositories are included only if a token is set, for that run only:
+# Private repositories are included only if a token of that user is set, for that run only:
 #   $env:GITHUB_TOKEN = 'ghp_...'; .\git_clone_all.ps1; Remove-Item Env:GITHUB_TOKEN
 
 param(
@@ -57,6 +57,8 @@ while (-not (Test-Path -LiteralPath $Folder -PathType Container)) {
   if (-not $Folder) { exit 1 }
   $Folder = $Folder.Trim().Trim('"') -replace '^~', $HOME
 }
+# the full path: git is given paths in the folder, and it takes a ~ in them literally
+$Folder = (Resolve-Path -LiteralPath $Folder).ProviderPath
 
 # git is needed, so without it it stops
 Install-Missing 'git:Git.Git:clones the repositories'
@@ -65,13 +67,18 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) { exit 1 }
 # Windows PowerShell 5.1 does not use TLS 1.2, which GitHub needs, unless told
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
-# the list of repositories, 100 per page
+# the list of repositories, 100 per page: with a token of that user, public and private;
+# otherwise public only (a token of someone else still raises the limit of requests)
+$url = "https://api.github.com/users/$User/repos?type=owner"; $headers = @{}
 if ($env:GITHUB_TOKEN) {
-  $url = 'https://api.github.com/user/repos?affiliation=owner'    # public and private
   $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN" }
-} else {
-  $url = "https://api.github.com/users/$User/repos?type=owner"     # public only
-  $headers = @{}
+  try {
+    $owner = (Invoke-RestMethod -Uri 'https://api.github.com/user' -Headers $headers -UseBasicParsing).login
+  } catch {
+    Write-Host 'GitHub did not accept the token'
+    exit 1
+  }
+  if ($owner -eq $User) { $url = 'https://api.github.com/user/repos?affiliation=owner' }
 }
 
 $repos = @()

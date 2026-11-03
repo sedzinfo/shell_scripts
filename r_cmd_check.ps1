@@ -37,12 +37,13 @@ function Find-Rscript {
     Select-Object -Last 1 -ExpandProperty FullName
 }
 
-# the first argument that is an existing folder is the folder, the others are packages
+# the folder is given as a path (~\GitHub, ., ..\work, C:\work): a plain word is a package,
+# as a package's name may also be a folder here
 $Root = $null; $only = @()
 foreach ($arg in $Names) {
   if ($arg -like '-*') { Write-Host "Unknown option: $arg"; exit 1 }
   $path = $arg.Trim().Trim('"') -replace '^~', $HOME
-  if (-not $Root -and (Test-Path -LiteralPath $path -PathType Container)) {
+  if (-not $Root -and ($arg -match '[\\/]|^[A-Za-z]:' -or $arg -in '~', '.', '..')) {
     $Root = $path
   } else {
     $only += $arg
@@ -117,7 +118,8 @@ $descriptions = Get-ChildItem -LiteralPath $Root -Recurse -Depth 2 -Filter DESCR
 foreach ($description in $descriptions) {
   $dir = $description.DirectoryName
   $name = Get-Field $description.FullName 'Package'
-  if (-not $name) { continue }
+  # a name R would not take is skipped, as it names the folder that each check deletes
+  if ($name -cnotmatch '^[A-Za-z][A-Za-z0-9.]*$') { continue }
   if (-not $folder_of.ContainsKey($name)) {
     $folder_of[$name] = $dir
   } elseif ((Split-Path -Leaf $dir) -ceq $name) {
@@ -191,7 +193,7 @@ function Show-Problems([string]$log) {
 function Invoke-R([string]$folder, [string]$log, [string[]]$arguments) {
   Push-Location -LiteralPath $folder
   try {
-    $output = & $r @arguments 2>&1 | ForEach-Object { "$_" }
+    $output = & $r @arguments 2>&1 | ForEach-Object { if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { "$_" } }
     $status = $LASTEXITCODE
   } finally {
     Pop-Location
@@ -211,7 +213,7 @@ if (-not $AsCran) {
   $env:_R_CHECK_FORCE_SUGGESTS_ = 'false'; $env:NOT_CRAN = 'true'
 }
 
-$with_errors = @(); $with_warnings = @(); $with_notes = @(); $summary = @()
+$with_errors = @(); $with_warnings = @(); $with_notes = @(); $with_ok = @(); $summary = @()
 try {
   foreach ($name in $selected) {
     $dir = $folder_of[$name]
@@ -244,7 +246,7 @@ try {
       }
       if (-not $result) { $result = 'check did not finish' }
       if ($result -ceq 'OK') {
-        Write-Host '  OK' -ForegroundColor Green
+        $with_ok += $name; Write-Host '  OK' -ForegroundColor Green
       } elseif ($result -clike '*ERROR*' -or $result -eq 'check did not finish') {
         $with_errors += $name; Write-Host "  $result" -ForegroundColor Red
       } elseif ($result -clike '*WARNING*') {
@@ -263,6 +265,10 @@ try {
     $duration = '{0}m{1:00}s' -f [math]::Floor($seconds / 60), ($seconds % 60)
     $summary += '{0,-16} {1,-12} {2,-10} {3}' -f $name, $version, $duration, $result
   }
+} catch {
+  # a package that stops the script counts as an error, and the ones after it as not checked
+  Write-Host "  stopped: $($_.Exception.Message)" -ForegroundColor Red
+  $with_errors += $name
 } finally {
   foreach ($variable in $saved.Keys) {
     if ($null -eq $saved[$variable]) {
@@ -289,7 +295,8 @@ if ($with_warnings.Count -gt 0) {
 if ($with_notes.Count -gt 0) {
   Write-Host "Only notes in $($with_notes.Count): $($with_notes -join ' ')"
 }
-$passed = $selected.Count - $with_errors.Count - $with_warnings.Count - $with_notes.Count
-if ($passed -gt 0) { Write-Host "OK: $passed" -ForegroundColor Green }
+if ($with_ok.Count -gt 0) { Write-Host "OK: $($with_ok.Count)" -ForegroundColor Green }
+$unchecked = @($selected | Where-Object { $with_ok + $with_errors + $with_warnings + $with_notes -notcontains $_ })
+if ($unchecked.Count -gt 0) { Write-Host "Not checked: $($unchecked -join ' ')" -ForegroundColor Red; exit 1 }
 if ($with_errors.Count -gt 0) { exit 1 }
 exit 0

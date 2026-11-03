@@ -2,11 +2,14 @@
 # the folder given) from their roxygen comments, one after the other, with
 # roxygen2::roxygenise() (what devtools::document() does for one package). r_cmd_check.ps1
 # uses man\ as it is, so run this first. It reports which packages failed and which files
-# changed, to commit and push. Nothing is committed or pushed.
+# changed, to commit and push. It lists the packages and asks first. Nothing is committed or
+# pushed.
 #   r_document_all.ps1 [folder] [package ...]   every package, or only the ones named
 #   r_document_all.ps1 -Check                   only lists the packages whose help pages or
 #                                               NAMESPACE are out of date: roxygen runs on a
 #                                               copy, nothing is changed
+#   r_document_all.ps1 -Yes                     without asking first
+# The folder is given as a path (~\GitHub, ., ..\work, C:\work): a plain word is a package.
 # A package is a folder with a DESCRIPTION: a repository, or a folder in one (rwf\rwf).
 # Mirror repositories with the same package (crypto and golemcrypto) are each documented.
 # Packages without roxygen comments are skipped. The exit code is 1 if any failed, or with
@@ -15,7 +18,8 @@
 param(
   [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
   [string[]]$Names,
-  [switch]$Check
+  [switch]$Check,
+  [switch]$Yes
 )
 
 # anything but y/yes is no
@@ -38,12 +42,13 @@ function Find-Rscript {
     Select-Object -Last 1 -ExpandProperty FullName
 }
 
-# the first argument that is an existing folder is the folder, the others are packages
+# the folder is given as a path: a plain word is a package, as a package's name may also be a
+# folder here
 $Root = $null; $only = @()
 foreach ($arg in $Names) {
   if ($arg -like '-*') { Write-Host "Unknown option: $arg"; exit 1 }
   $path = $arg.Trim().Trim('"') -replace '^~', $HOME
-  if (-not $Root -and (Test-Path -LiteralPath $path -PathType Container)) {
+  if (-not $Root -and ($arg -match '[\\/]|^[A-Za-z]:' -or $arg -in '~', '.', '..')) {
     $Root = $path
   } else {
     $only += $arg
@@ -87,9 +92,11 @@ if ($LASTEXITCODE -ne 0) {
 }
 $installed = & $rscript -e "cat(as.character(packageVersion('roxygen2')))" 2> $null
 
-# the part of a path inside the folder, as rwf\rwf
+# the part of a path inside the folder, as rwf\rwf; the folder's own name when the folder
+# itself is the package
 function Get-Relative([string]$path) {
   if ($path.StartsWith($Root + [IO.Path]::DirectorySeparatorChar)) { return $path.Substring($Root.Length + 1) }
+  if ($path -eq $Root) { return Split-Path $path -Leaf }
   return $path
 }
 
@@ -168,6 +175,8 @@ function New-Copy([string]$dir) {
   $suffix = -join ((48..57) + (97..122) | Get-Random -Count 6 | ForEach-Object { [char]$_ })
   $dest = Join-Path $out "copy.$suffix"
   New-Item -ItemType Directory -Path $dest | Out-Null
+  # known at once, so that Ctrl+C while copying still removes it
+  $script:copy = $dest
   foreach ($entry in Get-ChildItem -LiteralPath $dir -Force) {
     if ($entry.Name -ceq '.git') { continue }
     $target = Join-Path $dest $entry.Name
@@ -223,10 +232,21 @@ function Get-Duration([datetime]$since) {
   return '{0}m{1:00}s' -f [math]::Floor($seconds / 60), ($seconds % 60)
 }
 
+# copies left by a run that was closed before it could remove them
+foreach ($old in @(Get-ChildItem -LiteralPath $out -Directory -Filter 'copy.*' -ErrorAction SilentlyContinue)) {
+  $copy = $old.FullName; Remove-Copy
+}
+
 if ($Check) {
   Write-Host "Checking $($dirs.Count) package(s) in $Root against their roxygen comments (roxygen2 $installed); logs in $out"
 } else {
   Write-Host "Documenting $($dirs.Count) package(s) in $Root (roxygen2 $installed); logs in $out"
+  # the question before anything is changed
+  if (-not $Yes) {
+    Write-Host "Their help pages and NAMESPACE are written anew: $(($dirs | ForEach-Object { Get-Relative $_ }) -join ' ')"
+    if ([Console]::IsInputRedirected) { Write-Host 'Not a terminal, so nothing can be asked: add -Yes to update them'; exit 1 }
+    if (-not (Test-Yes 'Update them?')) { Write-Host 'Nothing was changed'; exit 0 }
+  }
 }
 if ($no_roxygen.Count -gt 0) { Write-Host "Skipped, no roxygen comments: $($no_roxygen -join ' ')" }
 
@@ -237,7 +257,7 @@ try {
     $description = Join-Path $dir 'DESCRIPTION'
     $name = Get-Field $description 'Package'
     $recorded = Get-Field $description 'Config/roxygen2/version', 'RoxygenNote'
-    $log = Join-Path $out (($label -replace '[\\/]', '_') + '.log')
+    $log = Join-Path $out (($label -replace '[\\/:]', '_') + '.log')
     Write-Host ''
     Write-Host ('#' * 80)
     Write-Host "$name  ($label)"
@@ -253,7 +273,7 @@ try {
     $encoding = [Console]::OutputEncoding
     try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
     try {
-      $output = & $rscript -e 'roxygen2::roxygenise(commandArgs(TRUE)[1])' $target 2>&1 | ForEach-Object { "$_" }
+      $output = & $rscript -e 'roxygen2::roxygenise(commandArgs(TRUE)[1])' $target 2>&1 | ForEach-Object { if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { "$_" } }
       $status = $LASTEXITCODE
     } finally {
       try { [Console]::OutputEncoding = $encoding } catch { }

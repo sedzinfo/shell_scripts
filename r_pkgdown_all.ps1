@@ -1,10 +1,13 @@
 # Builds the pkgdown website of every R package in Documents\GitHub (or the folder given)
 # that has a _pkgdown.yml, one after the other, into the folder the site is published from
 # (docs\, or the destination in _pkgdown.yml). It reports which builds failed and which
-# repositories have changed files in their site, to commit and push. Nothing is committed or
-# pushed.
+# repositories have changed files in their site, to commit and push. It lists the sites and
+# asks first. Nothing is committed or pushed.
 #   r_pkgdown_all.ps1 [folder] [package ...]   every package, or only the ones named
-#   r_pkgdown_all.ps1 -NoExamples              without running the examples (quicker)
+#   r_pkgdown_all.ps1 -NoExamples              without running the examples (quicker, but
+#                                              the help pages then show none)
+#   r_pkgdown_all.ps1 -Yes                     without asking first
+# The folder is given as a path (~\GitHub, ., ..\work, C:\work): a plain word is a package.
 # A package is a folder with a DESCRIPTION: a repository, or a folder in one (rwf\rwf).
 # Mirror repositories with the same package (crypto and golemcrypto) each get their own site.
 # The exit code is 1 if any build failed.
@@ -12,7 +15,8 @@
 param(
   [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
   [string[]]$Names,
-  [switch]$NoExamples
+  [switch]$NoExamples,
+  [switch]$Yes
 )
 
 # anything but y/yes is no
@@ -35,12 +39,13 @@ function Find-Rscript {
     Select-Object -Last 1 -ExpandProperty FullName
 }
 
-# the first argument that is an existing folder is the folder, the others are packages
+# the folder is given as a path: a plain word is a package, as a package's name may also be a
+# folder here
 $Root = $null; $only = @()
 foreach ($arg in $Names) {
   if ($arg -like '-*') { Write-Host "Unknown option: $arg"; exit 1 }
   $path = $arg.Trim().Trim('"') -replace '^~', $HOME
-  if (-not $Root -and (Test-Path -LiteralPath $path -PathType Container)) {
+  if (-not $Root -and ($arg -match '[\\/]|^[A-Za-z]:' -or $arg -in '~', '.', '..')) {
     $Root = $path
   } else {
     $only += $arg
@@ -144,6 +149,12 @@ function Get-Duration([datetime]$since) {
 $examples = if ($NoExamples) { 'FALSE' } else { 'TRUE' }
 
 Write-Host "Building $($dirs.Count) site(s) in $Root; logs in $out"
+# the question before anything is written
+if (-not $Yes) {
+  Write-Host "Their sites are built anew: $(($dirs | ForEach-Object { Get-Relative $_ }) -join ' ')"
+  if ([Console]::IsInputRedirected) { Write-Host 'Not a terminal, so nothing can be asked: add -Yes to build them'; exit 1 }
+  if (-not (Test-Yes 'Build them?')) { Write-Host 'Nothing was changed'; exit 0 }
+}
 if ($no_config.Count -gt 0) { Write-Host "Skipped, no _pkgdown.yml (pkgdown::use_pkgdown() sets one up): $($no_config -join ' ')" }
 
 $failed = @(); $to_commit = @(); $example_errors = @(); $summary = @()
@@ -166,7 +177,10 @@ foreach ($dir in $dirs) {
   $encoding = [Console]::OutputEncoding
   try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
   try {
-    $output = & $rscript -e "pkgdown::build_site(commandArgs(TRUE)[1], preview = FALSE, examples = $examples)" $dir 2>&1 | ForEach-Object { "$_" }
+    # a blank line R writes to its errors comes as an error record, which Windows PowerShell
+    # 5.1 would show as its type
+    $output = & $rscript -e "pkgdown::build_site(commandArgs(TRUE)[1], preview = FALSE, examples = $examples)" $dir 2>&1 | ForEach-Object {
+      if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { "$_" } }
     $status = $LASTEXITCODE
   } finally {
     try { [Console]::OutputEncoding = $encoding } catch { }
@@ -175,14 +189,14 @@ foreach ($dir in $dirs) {
   if ($status -eq 0) {
     $result = 'built'; $color = 'Green'
     # an example that fails does not stop pkgdown: the help page shows the error (class
-    # r-err), so the pages written now are searched for one
-    $reference = Join-Path $site 'reference'
+    # r-err), so the pages written now are searched for one, also the ones of the development
+    # version (docs\dev\reference)
     $broken = @()
-    if (Test-Path -LiteralPath $reference) {
-      $broken = @(Get-ChildItem -LiteralPath $reference -Recurse -File -Filter '*.html' |
-        Where-Object { $_.LastWriteTime -gt $start } |
+    if (Test-Path -LiteralPath $site) {
+      $broken = @(Get-ChildItem -LiteralPath $site -Recurse -File -Filter '*.html' |
+        Where-Object { (Split-Path -Leaf $_.DirectoryName) -eq 'reference' -and $_.LastWriteTime -gt $start } |
         Where-Object { Select-String -LiteralPath $_.FullName -Pattern 'class="r-err' -SimpleMatch -Quiet } |
-        ForEach-Object { $_.BaseName } | Sort-Object)
+        ForEach-Object { $_.BaseName } | Sort-Object -Unique)
     }
     if ($broken.Count -gt 0) {
       $result = "built, examples fail in $($broken.Count) pages"; $color = 'Yellow'
@@ -225,6 +239,9 @@ if ($example_errors.Count -gt 0) {
 }
 if ($to_commit.Count -gt 0) {
   Write-Host "Changed sites, to commit and push for GitHub Pages: $(($to_commit | Sort-Object -Unique) -join ' ')"
+  if ($NoExamples) {
+    Write-Host '  built with -NoExamples, so their help pages show no examples: build again without it before committing' -ForegroundColor Yellow
+  }
 }
 if ($failed.Count -gt 0) { exit 1 }
 exit 0

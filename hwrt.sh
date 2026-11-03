@@ -77,6 +77,20 @@ check_packages 'sensors:lm-sensors:temperatures and fans' \
 # previous one, so it does not flash
 tput civis                                  # hide the cursor
 trap 'tput cnorm; echo; exit' INT TERM      # and bring it back on Ctrl+C
+# the most a core can do, in MHz (0 when the kernel does not say)
+cpu_max=$(( $(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq 2> /dev/null || echo 0) / 1000 ))
+
+# the speed of the cores now, from the kernel (lscpu no longer shows it): their
+# average and the fastest one, laid out like the GPU lines
+cpu_speed() {
+	local mhz
+	mhz=$(awk -F': *' '/^cpu MHz/ { print int($2) }' /proc/cpuinfo)
+	[ -z "$mhz" ] && mhz=$(cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq 2> /dev/null | awk '{ print int($1 / 1000) }')
+	[ -z "$mhz" ] && return
+	awk -v max="$cpu_max" '{ sum += $1; n++; if ($1 > top) top = $1 }
+		END { printf "%-15s %10s   fastest core %d MHz%s\n", "CPU", int(sum / n) " MHz", top, (max > 0 ? ", max " max " MHz" : "") }' <<< "$mhz"
+}
+
 clear
 
 while :
@@ -86,7 +100,7 @@ do
 	free=$(free -m|awk '/^Mem:/{print $4}')
 	total=$(free -m|awk '{print $2}' | awk 'END{print}')
 	available=$(free -m | awk '/^Mem:/{print $7}')
-	cpu_speed=$(lscpu | grep MHz)
+	cpu_speed=$(cpu_speed)
 	# only on machines with an NVIDIA card (nvidia-smi installed and working):
 	# one line per card, laid out like the Intel line, with its temperature
 	gpu_status=""
@@ -96,7 +110,8 @@ do
 		gpu_status=$(awk -F', ' '{ sub(/^NVIDIA /, "", $5)
 			printf "%-15s %10s   busy %s%%, %s°C, max %s MHz, %s\n", "NVIDIA GPU", $1 " MHz", $2, $3, $4, $5 }' <<< "$nvidia")
 	fi
-	sensors_output=$(sensors 2> /dev/null)
+	# in UTF-8, as in another locale sensors writes C instead of °C
+	sensors_output=$(LC_ALL=C.UTF-8 sensors 2> /dev/null)
 	cpu_temperature=$(sensors_table '°C' <<< "$sensors_output")
 	cpu_fan=$(sensors_table 'RPM' <<< "$sensors_output")
 	[ -n "$intel_gpu" ] && intel_busy
@@ -131,7 +146,8 @@ do
 
 	if [[ "$available" -lt 3000 ]]
 	then
-		speaker-test -t sine -f 20000 -l 1 2> /dev/null
+		# quietly: what it prints would push the view down
+		speaker-test -t sine -f 20000 -l 1 > /dev/null 2>&1
 	fi
 	sleep 5
 done

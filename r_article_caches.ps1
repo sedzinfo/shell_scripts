@@ -6,10 +6,14 @@
 # counts as using a function when its chunks call it, or call a function of the package that
 # calls it, at any depth.
 #   r_article_caches.ps1 [folder] [package ...]   every package, or only the ones named
-#   r_article_caches.ps1 -Clean                   deletes the stale caches, and touches their
-#                                                 article so that a lazy build rebuilds it
-#   r_article_caches.ps1 -Accept                  records every cache as up to date (after a
-#                                                 full build)
+#   r_article_caches.ps1 -Clean                   deletes the stale caches, after asking, and
+#                                                 touches their article so that a lazy build
+#                                                 rebuilds it
+#   r_article_caches.ps1 -Clean -Yes              without asking
+#   r_article_caches.ps1 -Accept                  records every cache as up to date (after the
+#                                                 articles were built anew, with their caches
+#                                                 deleted)
+# The folder is given as a path (~\GitHub, ., ..\work, C:\work): a plain word is a package.
 # With -Clean and -Accept it records, in each cache folder, a fingerprint of the functions the
 # article uses (r_article_caches.txt); from then on a function whose code changed is found
 # exactly, and named. For a cache without that record git gives the code each function had in
@@ -22,7 +26,8 @@ param(
   [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
   [string[]]$Names,
   [switch]$Clean,
-  [switch]$Accept
+  [switch]$Accept,
+  [switch]$Yes
 )
 
 # anything but y/yes is no
@@ -49,11 +54,13 @@ if ($Clean -and $Accept) { Write-Host 'Either -Clean or -Accept, not both'; exit
 if ($Clean) { $mode = 'clean' } elseif ($Accept) { $mode = 'accept' } else { $mode = 'report' }
 
 # the first argument that is an existing folder is the folder, the others are packages
+# the folder is given as a path: a plain word is a package, as a package's name may also be a
+# folder here
 $Root = $null; $only = @()
 foreach ($arg in $Names) {
   if ($arg -like '-*') { Write-Host "Unknown option: $arg"; exit 1 }
   $path = $arg.Trim().Trim('"') -replace '^~', $HOME
-  if (-not $Root -and (Test-Path -LiteralPath $path -PathType Container)) {
+  if (-not $Root -and ($arg -match '[\\/]|^[A-Za-z]:' -or $arg -in '~', '.', '..')) {
     $Root = $path
   } else {
     $only += $arg
@@ -109,6 +116,9 @@ $analysis = @'
 args <- commandArgs(trailingOnly = TRUE)
 package <- args[1]; mode <- args[2]
 record_name <- "r_article_caches.txt"
+# with --clean, only the caches of these articles (one per line) are deleted: the ones you
+# agreed to after the report
+approved <- strsplit(Sys.getenv("R_ARTICLE_CACHES_DELETE"), "\n", fixed = TRUE)[[1]]
 # an argument for git, quoted as the system starts programs (Windows has no ' quotes)
 q <- function(x) shQuote(x, type = if (.Platform$OS.type == "windows") "cmd" else "sh")
 git_ok <- nzchar(Sys.which("git")) &&
@@ -142,8 +152,10 @@ read_functions <- function(text) {
       definition <- e[[3]]
       if (length(definition) >= 4) definition[[4]] <- NULL   # the source reference, with the comments
       code <- paste(deparse(normalize(definition)), collapse = "\n")
+      # the names the body uses, and the ones its default arguments use
+      defaults <- lapply(as.list(definition[[2]]), function(a) if (is.call(a) || (is.name(a) && nzchar(as.character(a)))) all.names(a))
       found[[as.character(e[[2]])]] <- list(start = refs[[k]][1], end = refs[[k]][3],
-        hash = unname(tools::md5sum(bytes = charToRaw(code))), uses = unique(all.names(definition)))
+        hash = unname(tools::md5sum(bytes = charToRaw(code))), uses = unique(c(all.names(definition[[3]]), unlist(defaults))))
     }
   }
   found
@@ -158,6 +170,11 @@ for (file in list.files(file.path(package, "R"), pattern = "\\.[Rr]$", full.name
 }
 known <- names(functions)
 
+# the functions of the package among some names, and the S3 methods of the ones that are
+# generics (print.myclass for print, summarise.default for summarise), which a call of the
+# generic runs
+used_of <- function(names) union(intersect(names, known), known[sub("\\..*$", "", known) %in% names])
+
 # a function and every function of the package it calls, at any depth
 closure <- function(roots) {
   seen <- character(); queue <- roots
@@ -165,7 +182,7 @@ closure <- function(roots) {
     name <- queue[1]; queue <- queue[-1]
     if (name %in% seen) next
     seen <- c(seen, name)
-    queue <- c(queue, setdiff(intersect(functions[[name]]$uses, known), seen))
+    queue <- c(queue, setdiff(used_of(functions[[name]]$uses), seen))
   }
   seen
 }
@@ -179,12 +196,26 @@ functions_in <- function(file, commit) {
   if (exists(key, envir = versions, inherits = FALSE)) return(get(key, envir = versions))
   path <- git(dirname(file), "ls-files", "--full-name", "--", q(basename(file)))
   found <- NULL
-  if (length(path) && length(commit) && nzchar(commit)) {
+  if (length(path) && length(commit) && !is.na(commit) && nzchar(commit)) {
     text <- git(dirname(file), "show", q(paste0(commit, ":", path[1])))
     found <- if (is.null(attr(text, "status"))) read_functions(text) else list()
   }
   assign(key, found, envir = versions)
   found
+}
+# the functions of every R file of the package in a commit, for a function that has moved to
+# another file since
+all_functions_in <- function(commit) {
+  key <- paste("all", commit)
+  if (!exists(key, envir = versions, inherits = FALSE)) {
+    found <- list()
+    for (path in git(package, "ls-tree", "--name-only", "--full-name", q(commit), "--", "R/")) {
+      text <- git(package, "show", q(paste0(commit, ":", path)))
+      if (is.null(attr(text, "status"))) found <- c(found, read_functions(text))
+    }
+    assign(key, found, envir = versions)
+  }
+  get(key, envir = versions)
 }
 # the last commit before a time
 commits <- new.env()
@@ -202,13 +233,16 @@ commit_before <- function(time) {
 # saved since then counts as a change. Returns how it changed, or NULL
 changed_since <- function(name, time) {
   f <- functions[[name]]
-  then <- if (git_ok) functions_in(f$file, commit_before(time)) else NULL
+  commit <- if (git_ok) commit_before(time) else NA
+  then <- if (!is.na(commit)) functions_in(f$file, commit) else NULL
   if (is.null(then)) {
     return(if (file.mtime(f$file) > time) "saved since" else NULL)
   }
-  if (is.null(then[[name]]) || then[[name]]$hash == f$hash) return(NULL)   # new since, or the same
+  old <- then[[name]]
+  if (is.null(old)) old <- all_functions_in(commit)[[name]]   # moved from another file since
+  if (is.null(old) || old$hash == f$hash) return(NULL)   # new since, or the same
   head <- functions_in(f$file, "HEAD")
-  if (!is.null(head[[name]]) && head[[name]]$hash == then[[name]]$hash) "not committed yet" else "committed since"
+  if (!is.null(head[[name]]) && head[[name]]$hash == old$hash) "not committed yet" else "committed since"
 }
 
 # the record of a cache: the hash of every function the article uses
@@ -231,32 +265,37 @@ for (article in articles) {
     if (inside && grepl("^\\s*```+\\s*$", line)) { inside <- FALSE; next }
     if (inside) code <- c(code, line)
   }
-  words <- unique(unlist(regmatches(code, gregexpr("[A-Za-z.][A-Za-z0-9._]*", code))))
-  uses <- closure(intersect(words, known))
+  words <- unique(unlist(regmatches(code, gregexpr("%[^% ]+%|[A-Za-z.][A-Za-z0-9._]*", code))))
+  uses <- closure(used_of(words))
   if (!length(results)) {
     # deleted by --clean and not built since: the next build uses the code as it is now,
     # so that is what --clean and --accept record
     if (mode %in% c("clean", "accept")) write_record(cache, uses)
-    cat("empty", relative, "", 0, "", sep = "\t", fill = TRUE)
+    cat("empty", relative, "", 0, "", sep = "\t")
+    cat("\n")
     next
   }
   written <- file.mtime(results)
   cached_at <- min(written)
-  if (file.exists(record)) {
+  # a record written before the cache was (by --clean, then the code changed before the
+  # build) does not tell what the cache was made with: git does
+  if (file.exists(record) && file.mtime(record) >= max(written)) {
     old <- tryCatch(read.delim(record, header = FALSE, col.names = c("name", "hash"), colClasses = "character", quote = ""),
                     error = function(e) data.frame(name = character(), hash = character()))
     old <- setNames(old$hash, old$name)
     now <- vapply(uses, function(n) functions[[n]]$hash, "")
     changed <- uses[uses %in% names(old) & old[uses] != now]
-    status <- if (length(changed)) "stale" else "ok"
-    details <- paste(changed, collapse = ", ")
+    # a function the cache was made with that the package no longer has
+    gone <- setdiff(names(old), known)
+    status <- if (length(changed) || length(gone)) "stale" else "ok"
+    details <- paste(c(changed, if (length(gone)) paste(gone, "(removed)")), collapse = ", ")
   } else {
     how <- lapply(uses, changed_since, time = cached_at); names(how) <- uses
     after <- uses[!vapply(how, is.null, NA)]
     status <- if (length(after)) "probably" else "unrecorded"
     details <- paste(vapply(after, function(n) sprintf("%s (%s)", n, how[[n]]), ""), collapse = ", ")
   }
-  if (mode == "clean" && status %in% c("stale", "probably")) {
+  if (mode == "clean" && status %in% c("stale", "probably") && relative %in% approved) {
     unlink(cache, recursive = TRUE)
     write_record(cache, uses)
     Sys.setFileTime(article, Sys.time())
@@ -274,7 +313,7 @@ for (article in articles) {
 '@
 
 # the packages: every folder with a DESCRIPTION that has cached articles
-$dirs = @()
+$dirs = @(); $matched = 0
 $skip = '^(\.git|renv|venv|\.venv|node_modules|.*\.Rcheck)$'
 $descriptions = Get-ChildItem -LiteralPath $Root -Recurse -Depth 2 -Filter DESCRIPTION -File -ErrorAction SilentlyContinue |
   Where-Object { -not ((Get-Relative $_.DirectoryName) -split '[\\/]' | Where-Object { $_ -match $skip }) } |
@@ -287,20 +326,21 @@ foreach ($description in $descriptions) {
     $folder = Split-Path -Leaf $dir
     if (-not ($only | Where-Object { $_ -ceq $name -or $_ -ceq $folder })) { continue }
   }
+  $matched++
   $vignettes = Join-Path $dir 'vignettes'
   if ((Test-Path -LiteralPath $vignettes) -and
       (Get-ChildItem -LiteralPath $vignettes -Recurse -Directory -Filter '*_cache' -ErrorAction SilentlyContinue | Select-Object -First 1)) {
     $dirs += $dir
   }
 }
-if ($dirs.Count -eq 0) {
-  if ($only.Count -gt 0) { Write-Host "No R packages named $($only -join ' ') with cached articles in $Root" }
-  else { Write-Host "No R packages with cached articles in $Root" }
-  exit 1
-}
+# packages without cached articles have no stale caches, so that is no failure (and a build
+# after this, in a fresh clone, still runs)
+$named = if ($only.Count -gt 0) { " named $($only -join ' ')" } else { '' }
+if ($dirs.Count -eq 0 -and $matched -gt 0) { Write-Host "No cached articles in the R packages$named of $Root"; exit 0 }
+if ($dirs.Count -eq 0) { Write-Host "No R packages$named in $Root"; exit 1 }
 
 switch ($mode) {
-  'clean'  { Write-Host "Deleting the stale caches of the articles in $Root" }
+  'clean'  { Write-Host "Caches of the articles in ${Root}: the stale ones are listed, then deleted after asking" }
   'accept' { Write-Host "Recording the caches of the articles in $Root as up to date" }
   default  { Write-Host "Caches of the articles in $Root (nothing is changed; -Clean deletes the stale ones)" }
 }
@@ -312,18 +352,34 @@ $program = Join-Path ([IO.Path]::GetTempPath()) "r_article_caches_$PID.R"
 $encoding = [Console]::OutputEncoding
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 
-$staleLeft = 0; $cleaned = 0; $failed = @()
+# the R part on one package; with clean, it deletes only the caches of the articles given (the
+# variable is put back afterwards, as a script shares it with the PowerShell window)
+function Invoke-Analysis([string]$dir, [string]$runMode, [string[]]$delete) {
+  $saved = $env:R_ARTICLE_CACHES_DELETE
+  $env:R_ARTICLE_CACHES_DELETE = ($delete -join "`n")
+  try {
+    return @(& $rscript $program $dir $runMode 2>&1 | ForEach-Object {
+      if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { "$_" } })
+  } finally {
+    if ($null -eq $saved) { Remove-Item Env:R_ARTICLE_CACHES_DELETE -ErrorAction SilentlyContinue } else { $env:R_ARTICLE_CACHES_DELETE = $saved }
+  }
+}
+
+# first what each cache is; -Clean deletes nothing yet, and lists the stale ones of each package
+$first = if ($mode -eq 'clean') { 'report' } else { $mode }
+$staleLeft = 0; $cleaned = 0; $failed = @(); $staleOf = @{}; $unread = @{}
 try {
   foreach ($dir in $dirs) {
     Write-Host ''
     Write-Host ('#' * 80)
     Write-Host (Get-Relative $dir) -ForegroundColor Cyan
-    $output = @(& $rscript $program $dir $mode 2>&1 | ForEach-Object { "$_" })
+    $output = Invoke-Analysis $dir $first @()
     if ($LASTEXITCODE -ne 0) {
       Write-Host '  could not be read:' -ForegroundColor Red
       $output | Select-Object -Last 5 | ForEach-Object { Write-Host "    $_" }
-      $failed += Get-Relative $dir; continue
+      $failed += Get-Relative $dir; $unread[$dir] = $true; continue
     }
+    $staleOf[$dir] = @()
     foreach ($line in $output) {
       $status, $article, $cachedAt, $uses, $details = $line -split "`t"
       if (-not $article) { continue }
@@ -334,12 +390,41 @@ try {
         'unrecorded' { Write-Host 'no function changed since the cache' -ForegroundColor Green -NoNewline; Write-Host "  ($cachedAt, $functions)" }
         'recorded'   { Write-Host 'up to date, now recorded' -ForegroundColor Green -NoNewline; Write-Host "  ($cachedAt)" }
         'accepted'   { Write-Host 'recorded as up to date' -ForegroundColor Green -NoNewline; Write-Host "  ($cachedAt)" }
-        'stale'      { Write-Host 'stale' -ForegroundColor Red -NoNewline; Write-Host ": changed since the cache of ${cachedAt}: $details"; $staleLeft++ }
-        'probably'   { Write-Host 'stale' -ForegroundColor Yellow -NoNewline; Write-Host " (cache of $cachedAt; by git): $details"; $staleLeft++ }
-        '*+cleaned'  { Write-Host 'cache deleted' -ForegroundColor Green -NoNewline; Write-Host ": $details"; $cleaned++ }
+        'stale'      { Write-Host 'stale' -ForegroundColor Red -NoNewline; Write-Host ": changed since the cache of ${cachedAt}: $details"; $staleLeft++; $staleOf[$dir] += $article }
+        'probably'   { Write-Host 'stale' -ForegroundColor Yellow -NoNewline; Write-Host " (cache of $cachedAt; by git): $details"; $staleLeft++; $staleOf[$dir] += $article }
         'empty'      { Write-Host 'cache deleted, not built again yet' }
         default      { Write-Host "$status $details" }
       }
+    }
+  }
+
+  # -Clean: the question, then the stale caches deleted (only the ones listed), and the
+  # fingerprint recorded in the others
+  if ($mode -eq 'clean') {
+    $delete = $true
+    if ($staleLeft -gt 0 -and -not $Yes) {
+      Write-Host ''
+      if ([Console]::IsInputRedirected) {
+        Write-Host 'Not a terminal, so nothing can be asked: add -Yes to delete them'; $delete = $false
+      } elseif (-not (Test-Yes "Delete the $staleLeft stale caches above?")) {
+        $delete = $false
+      }
+    }
+    if ($delete) {
+      foreach ($dir in $dirs) {
+        if ($unread[$dir]) { continue }
+        $output = Invoke-Analysis $dir 'clean' $staleOf[$dir]
+        if ($LASTEXITCODE -ne 0) { continue }
+        foreach ($line in $output) {
+          $status, $article = $line -split "`t"
+          if ($status -like '*+cleaned') {
+            Write-Host '  cache deleted' -ForegroundColor Green -NoNewline; Write-Host ": $(Get-Relative $dir)/$article"
+            $cleaned++; $staleLeft--
+          }
+        }
+      }
+    } else {
+      Write-Host 'Nothing was deleted'
     }
   }
 } finally {

@@ -2,29 +2,35 @@
 # are not on GitHub yet, but first runs R CMD check (r_cmd_check.ps1) on each R package those
 # commits change, and pushes a repository only when its packages pass: no errors or warnings
 # (with -Strict, no notes either). The check runs on a clean copy of the last commit (a git
-# worktree), exactly what would be pushed, so uncommitted or untracked files neither help nor
-# spoil it. Nothing is committed.
+# worktree), exactly what is pushed, so uncommitted or untracked files neither help nor spoil
+# it. Nothing is committed. It lists the repositories with commits to push and asks before it
+# checks and pushes them.
 #   git_push_checked.ps1 [folder] [repository ...]   every repository, or only the ones named
 #   git_push_checked.ps1 -DryRun                     checks, but pushes nothing
 #   git_push_checked.ps1 -Strict                     notes also stop a push
+#   git_push_checked.ps1 -Yes                        pushes without asking first
+# The folder is given as a path (~\GitHub, ., ..\work, C:\work): a plain word is a repository.
 # Commits that change nothing that goes into a package (only its site in docs\, or other
 # files in .Rbuildignore) are pushed without a check. A repository behind GitHub, or without
-# an upstream branch, is skipped. The exit code is 1 if any repository with commits to push
-# was not pushed.
+# an upstream branch, is skipped. Only the commit that was listed is checked and pushed:
+# commits made while the checks run wait for the next run. The exit code is 1 if any
+# repository with commits to push was not pushed.
 
 param(
   [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
   [string[]]$Names,
   [switch]$DryRun,
-  [switch]$Strict
+  [switch]$Strict,
+  [switch]$Yes
 )
 
-# the first argument that is an existing folder is the folder, the others are repositories
+# the folder is given as a path: a plain word is a repository, as a repository's name may
+# also be a folder here
 $Root = $null; $only = @()
 foreach ($arg in $Names) {
   if ($arg -like '-*') { Write-Host "Unknown option: $arg"; exit 1 }
   $path = $arg.Trim().Trim('"') -replace '^~', $HOME
-  if (-not $Root -and (Test-Path -LiteralPath $path -PathType Container)) {
+  if (-not $Root -and ($arg -match '[\\/]|^[A-Za-z]:' -or $arg -in '~', '.', '..')) {
     $Root = $path
   } else {
     $only += $arg
@@ -44,6 +50,12 @@ while (-not (Test-Path -LiteralPath $Root -PathType Container)) {
   $Root = $Root.Trim().Trim('"') -replace '^~', $HOME
 }
 $Root = (Resolve-Path -LiteralPath $Root).ProviderPath.TrimEnd('\', '/')
+
+# anything but y/yes is no
+function Test-Yes([string]$question) {
+  $answer = Read-Host "$question [y/N]"
+  return $answer -match '^\s*y(es)?\s*$'
+}
 
 # minutes and seconds since a time
 function Get-Duration([datetime]$since) {
@@ -177,56 +189,104 @@ Write-Host "Pushing what is not on GitHub yet in $Root, after checking the R pac
 if ($Strict) { Write-Host 'Strict: notes also stop a push' }
 if ($DryRun) { Write-Host 'Dry run: nothing is pushed' }
 
-$not_pushed = @(); $summary = @(); $nothing = 0
+# first, after a fetch, the repositories with commits to push, each with its last commit,
+# which is what is checked and pushed, and the branch on GitHub it goes to
+$not_pushed = @(); $summary = @(); $nothing = 0; $found = @(); $todo = @()
+foreach ($folder in Get-ChildItem -LiteralPath $Root -Directory | Sort-Object Name) {
+  $dir = $folder.FullName
+  if (-not (Test-Path -LiteralPath (Join-Path $dir '.git'))) { continue }
+  $repo = $folder.Name
+  if ($only.Count -gt 0 -and -not ($only -contains $repo)) { continue }
+  $found += $repo
+
+  # the branch (also in a repository without commits yet) and where it is pushed to
+  $branch = git -C $dir symbolic-ref -q --short HEAD 2> $null
+  $remote = $null; $merge = $null
+  if ($branch) {
+    $remote = git -C $dir config "branch.$branch.remote"
+    $merge = git -C $dir config "branch.$branch.merge"
+  }
+  if (-not $remote -or $remote -eq '.' -or -not $merge) {
+    # without an upstream branch there is nowhere to push to
+    $reason = if (-not $branch) { 'detached HEAD' } else { "no upstream branch (git push -u origin $branch the first time)" }
+    $summary += Format-Line $repo '' "skipped: $reason"
+    continue
+  }
+  git -C $dir fetch -q 2> $null
+  if ($LASTEXITCODE -ne 0) {
+    $not_pushed += $repo; $summary += Format-Line $repo '' 'skipped: fetch failed (no connection?)'
+    continue
+  }
+  # after the fetch, as the branch may have been deleted on GitHub (with fetch.prune)
+  $upstream = git -C $dir rev-parse -q --verify --symbolic-full-name '@{u}' 2> $null
+  $sha = git -C $dir rev-parse -q --verify HEAD 2> $null
+  if (-not $upstream -or -not $sha) {
+    $reason = if (-not $sha) { 'no commits yet' } else { 'its branch is not on GitHub (deleted there?)' }
+    $summary += Format-Line $repo '' "skipped: $reason"
+    continue
+  }
+  $ahead = [int](git -C $dir rev-list --count "$upstream..$sha")
+  $behind = [int](git -C $dir rev-list --count "$sha..$upstream")
+  if ($ahead -eq 0) { $nothing++; continue }
+  if ($behind -gt 0) {
+    $not_pushed += $repo
+    $summary += Format-Line $repo '' "not pushed: $behind commits on GitHub to pull first (git_pull_all.ps1)"
+    continue
+  }
+  $todo += [pscustomobject]@{
+    Dir = $dir; Repo = $repo; Branch = $branch; Sha = $sha; Upstream = $upstream
+    Remote = $remote; Merge = $merge; Ahead = $ahead
+  }
+}
+
+# a misspelled name would otherwise check and push nothing, quietly
+$missing = @($only | Where-Object { $found -notcontains $_ })
+if ($missing.Count -gt 0) {
+  Write-Host "No repository named $($missing -join ' ') in $Root" -ForegroundColor Red
+  exit 1
+}
+
+# what is pushed, and the question before anything is
+if ($todo.Count -gt 0) {
+  Write-Host ''
+  Write-Host 'Commits to push, once the R packages they change pass the check:'
+  foreach ($item in $todo) {
+    $commits = if ($item.Ahead -eq 1) { '1 commit' } else { "$($item.Ahead) commits" }
+    Write-Host ('  {0,-32} {1}' -f $item.Repo, "$($item.Branch), $commits")
+  }
+  if (-not $DryRun -and -not $Yes) {
+    if ([Console]::IsInputRedirected) { Write-Host 'Not a terminal, so nothing can be asked: add -Yes to push'; exit 1 }
+    if (-not (Test-Yes 'Check them and push the ones that pass?')) { Write-Host 'Nothing was pushed'; exit 0 }
+  }
+}
+
 try {
-  foreach ($folder in Get-ChildItem -LiteralPath $Root -Directory | Sort-Object Name) {
-    $dir = $folder.FullName
-    if (-not (Test-Path -LiteralPath (Join-Path $dir '.git'))) { continue }
-    $repo = $folder.Name
-    if ($only.Count -gt 0 -and -not ($only -contains $repo)) { continue }
-
-    $branch = git -C $dir rev-parse --abbrev-ref HEAD 2> $null
-    git -C $dir rev-parse --verify -q '@{u}' *> $null
-    if ($LASTEXITCODE -ne 0) {
-      # without an upstream branch there is nowhere to push to
-      $reason = if ($branch -eq 'HEAD') { 'detached HEAD' } else { "no upstream branch (git push -u origin $branch the first time)" }
-      $summary += Format-Line $repo '' "skipped: $reason"
-      continue
-    }
-    git -C $dir fetch -q 2> $null
-    if ($LASTEXITCODE -ne 0) {
-      $not_pushed += $repo; $summary += Format-Line $repo '' 'skipped: fetch failed (no connection?)'
-      continue
-    }
-    $ahead = [int](git -C $dir rev-list --count '@{u}..HEAD')
-    $behind = [int](git -C $dir rev-list --count 'HEAD..@{u}')
-    if ($ahead -eq 0) { $nothing++; continue }
-
+  foreach ($item in $todo) {
+    $dir = $item.Dir; $repo = $item.Repo; $sha = $item.Sha; $upstream = $item.Upstream
     Write-Host ''
     Write-Host ('#' * 80)
-    $commits = if ($ahead -eq 1) { '1 commit' } else { "$ahead commits" }
-    Write-Host "$repo  ($branch, $commits to push)"
-    git -C $dir log -n 5 --format='  %h %s' '@{u}..HEAD'
-    if ($ahead -gt 5) { Write-Host '  ...' }
+    $commits = if ($item.Ahead -eq 1) { '1 commit' } else { "$($item.Ahead) commits" }
+    Write-Host "$repo  ($($item.Branch), $commits to push)"
+    git -C $dir log -n 5 --format='  %h %s' "$upstream..$sha"
+    if ($item.Ahead -gt 5) { Write-Host '  ...' }
     $start = Get-Date
-    if ($behind -gt 0) {
-      $result = "not pushed: $behind commits on GitHub to pull first (git_pull_all.ps1)"
-      Write-Host "  $result" -ForegroundColor Yellow
-      $not_pushed += $repo; $summary += Format-Line $repo '' $result
-      continue
+    $head = git -C $dir rev-parse -q --verify HEAD 2> $null
+    if ($head -ne $sha) {
+      Write-Host "  HEAD has moved since the list: only $($sha.Substring(0, 7)), as listed, is checked and pushed" -ForegroundColor Yellow
     }
     $uncommitted = @(git -C $dir status --porcelain).Count
     if ($uncommitted -gt 0) { Write-Host "  $uncommitted uncommitted files stay here: they are neither checked nor pushed" }
 
-    # the R packages in the last commit whose built package the new commits change
-    $changed = @(git -C $dir diff --name-only --no-renames '@{u}' HEAD)
+    # the R packages in the commit whose built package the new commits change; with
+    # core.quotePath off, git writes a name with letters such as o-umlaut as it is
+    $changed = @(git -C $dir -c core.quotePath=false diff --name-only --no-renames $upstream $sha)
     $packages = @()
-    foreach ($description in @(git -C $dir ls-tree -r --name-only HEAD | Where-Object { $_ -cmatch '^([^/]+/)?DESCRIPTION$' })) {
+    foreach ($description in @(git -C $dir -c core.quotePath=false ls-tree -r --name-only $sha | Where-Object { $_ -cmatch '^([^/]+/)?DESCRIPTION$' })) {
       $prefix = $description.Substring(0, $description.Length - 'DESCRIPTION'.Length)
-      $name = git -C $dir show "HEAD:$description" | Where-Object { $_ -match '^Package:\s*(.*?)\s*$' } |
+      $name = git -C $dir show "${sha}:$description" | Where-Object { $_ -match '^Package:\s*(.*?)\s*$' } |
         Select-Object -First 1 | ForEach-Object { $_ -replace '^Package:\s*(.*?)\s*$', '$1' }
       if (-not $name) { continue }
-      $regex = Get-IgnoreRegex @(git -C $dir show "HEAD:${prefix}.Rbuildignore" 2> $null)
+      $regex = Get-IgnoreRegex @(git -C $dir show "${sha}:${prefix}.Rbuildignore" 2> $null)
       foreach ($file in $changed) {
         if (-not ($file.StartsWith($prefix) -and $file.Length -gt $prefix.Length)) { continue }
         if (Test-GoesIntoBuild $regex $file.Substring($prefix.Length)) { $packages += $name; break }
@@ -239,7 +299,7 @@ try {
       $suffix = -join ((48..57) + (97..122) | Get-Random -Count 6 | ForEach-Object { [char]$_ })
       $worktree = Join-Path $out "$repo.$suffix"; $worktree_of = $dir
       $worktree_log = Join-Path $out "$repo.worktree.log"
-      $output = git -C $dir worktree add --detach -q $worktree HEAD 2>&1 | ForEach-Object { "$_" }
+      $output = git -C $dir worktree add --detach -q $worktree $sha 2>&1 | ForEach-Object { if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { "$_" } }
       if ($LASTEXITCODE -ne 0) {
         [IO.File]::WriteAllText($worktree_log, (@($output) -join [Environment]::NewLine) + [Environment]::NewLine)
         $result = "not pushed: could not make a clean copy ($worktree_log)"
@@ -282,7 +342,7 @@ try {
       $result = "would push$checked"
       Write-Host "  $result" -ForegroundColor Green
     } else {
-      $output = git -C $dir push -q 2>&1 | ForEach-Object { "$_" }
+      $output = git -C $dir push -q $item.Remote "${sha}:$($item.Merge)" 2>&1 | ForEach-Object { if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { "$_" } }
       $status = $LASTEXITCODE
       [IO.File]::WriteAllText($push_log, (@($output) -join [Environment]::NewLine) + [Environment]::NewLine)
       if ($status -eq 0) {

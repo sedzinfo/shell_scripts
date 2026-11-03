@@ -148,11 +148,13 @@ function Resolve-Machine($machine) {
   }
 }
 
-# whether ssh logs in without asking anything; the error, if not, in $script:loginError
+# whether ssh logs in without asking anything; the error, if not, in $script:loginError.
+# ControlPath=none: a connection shared with an earlier login (ControlMaster in ~\.ssh\config,
+# on Linux and macOS) would log in without testing the key
 function Test-Login($machine) {
   $out = [IO.Path]::GetTempFileName()
   try {
-    $arguments = @('-n', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10') + $machine.Login + @($machine.Destination, 'true')
+    $arguments = @('-n', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'ControlPath=none') + $machine.Login + @($machine.Destination, 'true')
     $code = Invoke-Program 'ssh' $arguments -Output $out
     $script:loginError = (Read-Output $out).Trim()
     return $code -eq 0
@@ -212,6 +214,10 @@ $null = Invoke-Program 'ssh-keygen' @('-l', '-f', "$Key.pub") -Output $out
 $fingerprint = @((Read-Output $out).Trim() -split '\s+')
 Remove-Item -LiteralPath $out, "$out.err" -ErrorAction SilentlyContinue
 Write-Host "Key: $Key.pub ($($fingerprint[1]) $($fingerprint[-1]))"
+# ssh tries only keys with these names by itself
+if ((Split-Path $Key -Leaf) -notin 'id_rsa', 'id_ecdsa', 'id_ecdsa_sk', 'id_ed25519', 'id_ed25519_sk', 'id_xmss') {
+  Write-Host "ssh logs in with this key only when told to: -i $Key on the machines' lines, or IdentityFile in ~\.ssh\config" -ForegroundColor Yellow
+}
 
 # a key with a passphrase logs in without asking only once ssh-agent holds it; on Windows
 # the ssh-agent service is off until it is turned on, as administrator
@@ -281,6 +287,9 @@ foreach ($line in [IO.File]::ReadAllLines($File)) {
     Write-Host "  copying your key: ssh asks for the password of $name once"
     # called directly, as only then the terminal is ssh's, so that the password you type reaches it
     $arguments = @($machine.Login + @($machine.Destination, $addKey) | ForEach-Object { Protect-Argument $_ })
+    # piped as UTF-8 without a byte order mark: $OutputEncoding can have one (UTF8 in a
+    # profile), and sshd does not read a line of authorized_keys that starts with it
+    $OutputEncoding = New-Object System.Text.UTF8Encoding $false
     $publicKey | & ssh @arguments
     if ($LASTEXITCODE -ne 0) {
       Write-Host '  the key could not be copied' -ForegroundColor Red

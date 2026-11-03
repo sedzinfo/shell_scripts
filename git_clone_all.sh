@@ -2,10 +2,13 @@
 # Clones every repository of a GitHub user into ~/GitHub (or the folder given).
 # Repositories that are already there are skipped, so it is safe to run again.
 #   git_clone_all.sh [folder] [user]
-# Private repositories are included only if a token is set:
+# Private repositories are included only if a token of that user is set:
 #   GITHUB_TOKEN=ghp_... git_clone_all.sh
 # Needs curl and jq.
 
+case "${1:-}" in
+  -h|--help) sed -n '2,/^$/{s/^# \{0,1\}//;p}' "$0"; exit 0 ;;
+esac
 root="${1:-$HOME/GitHub}"
 user="${2:-sedzinfo}"
 
@@ -47,13 +50,15 @@ check_packages() {
 check_packages 'curl:curl:asks GitHub for the list' 'jq:jq:reads that list'
 command -v curl > /dev/null && command -v jq > /dev/null || exit 1
 
-# the list of repositories, 100 per page
+# the list of repositories, 100 per page: with a token of that user, public and
+# private; otherwise public only (a token of someone else still raises the limit
+# of requests)
+url="https://api.github.com/users/$user/repos?type=owner"; auth=()
 if [ -n "$GITHUB_TOKEN" ]; then
-  url="https://api.github.com/user/repos?affiliation=owner"   # public and private
   auth=(-H "Authorization: Bearer $GITHUB_TOKEN")
-else
-  url="https://api.github.com/users/$user/repos?type=owner"   # public only
-  auth=()
+  owner=$(curl -fsS "${auth[@]}" https://api.github.com/user | jq -r .login) ||
+    { echo "GitHub did not accept the token"; exit 1; }
+  [ "${owner,,}" = "${user,,}" ] && url="https://api.github.com/user/repos?affiliation=owner"
 fi
 
 repos=()

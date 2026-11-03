@@ -6,7 +6,11 @@
 
 root="$HOME/GitHub"; fetch=1
 for arg in "$@"; do
-  [ "$arg" = "--no-fetch" ] && fetch=0 || root="$arg"
+  case "$arg" in
+    --no-fetch) fetch=0 ;;
+    -h|--help)  sed -n '2,/^$/{s/^# \{0,1\}//;p}' "$0"; exit 0 ;;
+    *)          root="$arg" ;;
+  esac
 done
 
 # ask for the folder until one that exists is given (Tab completes paths, ~ works)
@@ -20,13 +24,17 @@ done
 red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; reset=$'\e[0m'
 attention=0
 
+shopt -s dotglob
 for dir in "$root"/*/; do
-  [ -d "$dir/.git" ] || continue
+  [ -e "$dir/.git" ] || continue
   name=$(basename "$dir")
-  branch=$(git -C "$dir" rev-parse --abbrev-ref HEAD)
-  [ $fetch -eq 1 ] && git -C "$dir" fetch -q 2> /dev/null
+  # the branch, also in a repository without commits yet
+  branch=$(git -C "$dir" symbolic-ref -q --short HEAD) || branch=HEAD
 
   notes=()
+  if [ $fetch -eq 1 ] && ! git -C "$dir" fetch -q 2> /dev/null; then
+    notes+=("${yellow}not fetched${reset}")
+  fi
   changed=$(git -C "$dir" status --porcelain | wc -l)
   [ "$changed" -gt 0 ] && notes+=("${red}$changed uncommitted${reset}")
   if git -C "$dir" rev-parse --verify -q "@{u}" > /dev/null; then
@@ -39,6 +47,16 @@ for dir in "$root"/*/; do
   else
     notes+=("${yellow}no upstream branch${reset}")
   fi
+  # the other branches with commits that are on no branch of GitHub, and the stashes
+  others=0
+  while IFS= read -r ref; do
+    [ "$ref" = "refs/heads/$branch" ] && continue
+    [ "$(git -C "$dir" rev-list --count "$ref" --not --remotes)" -gt 0 ] && others=$((others + 1))
+  done < <(git -C "$dir" for-each-ref --format='%(refname)' refs/heads)
+  [ $others -eq 1 ] && notes+=("${red}1 other branch not on GitHub${reset}")
+  [ $others -gt 1 ] && notes+=("${red}$others other branches not on GitHub${reset}")
+  stashes=$(git -C "$dir" stash list | wc -l)
+  [ "$stashes" -gt 0 ] && notes+=("${red}$stashes stashed${reset}")
 
   if [ ${#notes[@]} -eq 0 ]; then
     printf '%-32s %-12s %s\n' "$name" "$branch" "${green}clean${reset}"

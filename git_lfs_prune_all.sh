@@ -28,7 +28,8 @@ for arg in "$@"; do
     -h|--help) sed -n '2,/^$/{s/^# \{0,1\}//;p}' "$0"; exit 0 ;;
     -*)        echo "Unknown option: $arg (see --help)"; exit 1 ;;
     *)
-      if [ $root_given -eq 0 ] && [ -d "${arg/#\~/$HOME}" ]; then
+      # a path is the folder (a repository's name may also be a folder here)
+      if [ $root_given -eq 0 ] && [[ "$arg" == */* || "$arg" == '~' || "$arg" == . || "$arg" == .. ]]; then
         root="${arg/#\~/$HOME}"; root_given=1
       else
         only+=("$arg")
@@ -92,7 +93,7 @@ size() {
 }
 
 # the bytes of a size as git lfs gives it (126 MB is 126000000)
-bytes() { local number=${1% *} unit=${1#* }; numfmt --from=si "$number${unit%B}" 2> /dev/null || echo 0; }
+bytes() { local number=${1% *} unit=${1#* }; LC_ALL=C numfmt --from=si "$number${unit%B}" 2> /dev/null || echo 0; }
 
 # the bytes of the files in a folder
 folder_bytes() { du -sb "$1" 2> /dev/null | cut -f 1; }
@@ -141,8 +142,9 @@ for dir in "$root"/*/; do
     continue
   fi
 
+  # git-lfs before 3.5 starts the line with "prune: "
   read -r count freed < <(git -C "$dir" lfs prune --dry-run 2>&1 |
-    sed -n 's/^prune: \([0-9]*\) files\{0,1\} would be pruned (\(.*\)), done\.$/\1 \2/p' | tail -n 1)
+    sed -nE 's/^(prune: )?([0-9]+) files? would be pruned \((.*)\), done\.$/\2 \3/p' | tail -n 1)
   if [ "${count:-0}" -eq 0 ]; then
     nothing=$((nothing + 1)); continue
   fi
@@ -180,13 +182,13 @@ for i in "${!prune_dirs[@]}"; do
   status=$?
   output=$(tr '\r' '\n' <<< "$output")
   # the last state of each line of progress
-  grep -E '^prune: .*done\.$' <<< "$output" | sed 's/^/  /'
+  grep -E ', done\.$' <<< "$output" | sed 's/^/  /'
   if [ $status -ne 0 ]; then
     if grep -q 'missing on remote' <<< "$output"; then
       echo "  ${red}$(grep -c '^ \* ' <<< "$output") versions are not on origin: nothing deleted${reset}"
       echo "    git lfs push --all origin uploads them"
     else
-      grep -v -e '^ \* ' -e '^prune: ' -e '^$' <<< "$output" | tail -n 3 | sed 's/^/  /'
+      grep -v -E -e '^ \* ' -e ', done\.$' -e '^$' <<< "$output" | tail -n 3 | sed 's/^/  /'
       echo "  ${red}git lfs prune failed: nothing deleted${reset}"
     fi
     failed+=("$repo")

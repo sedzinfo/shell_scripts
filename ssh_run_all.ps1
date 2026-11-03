@@ -4,7 +4,8 @@
 #   ssh_run_all.ps1 'sudo apt update && sudo apt full-upgrade -y'
 #   ssh_run_all.ps1 'df -h /'
 #   ssh_run_all.ps1 uptime
-# Put the command in quotes: PowerShell would take a -h in it for an option of the script.
+# Put the command in quotes, as one argument: unquoted, PowerShell would take its options for
+# the script's own, as it takes any beginning of an option's name (-y for -Yes).
 # It shows the command and the machines, and asks before running it. One machine after the
 # other (the default) the command can ask you things, such as the password of sudo or a
 # question of apt, and what it prints goes straight to this window; with -Parallel all
@@ -16,7 +17,8 @@
 #   -List ~\servers.txt   another list of machines
 #   -Parallel             all machines at the same time
 #   -Yes                  runs without asking first
-# The exit code is 1 if the command failed on a machine or a machine could not be reached.
+# The exit code is 1 if the command failed on a machine, or a machine could not be reached or
+# asked for a password.
 
 param(
   [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
@@ -113,14 +115,28 @@ function Resolve-Machine($machine) {
     $settings = @{}
     foreach ($line in [IO.File]::ReadAllLines($out)) {
       $name, $value = $line -split ' ', 2
-      if ($name -in 'user', 'hostname', 'port') { $settings[$name] = $value }
+      if ($name -in 'user', 'hostname', 'port', 'proxyjump', 'proxycommand') { $settings[$name] = $value }
     }
-    return "$($settings.user)@$($settings.hostname):$($settings.port)"
+    # with the jump host, as the same address behind two jump hosts is two machines
+    $via = ''
+    foreach ($name in 'proxyjump', 'proxycommand') {
+      if ($settings[$name] -and $settings[$name] -ne 'none') { $via = " via $($settings[$name])" }
+    }
+    return "$($settings.user)@$($settings.hostname):$($settings.port)$via"
   } finally {
     Remove-Item -LiteralPath $out, "$out.err" -ErrorAction SilentlyContinue
   }
 }
 
+# the command as one argument, in quotes: words of a command without them can be taken for the
+# script's options (a -y for -Yes, which runs without asking). And -Yes written in full, when
+# it can be seen how it was written
+if ($Command.Count -gt 1) {
+  Write-Host "Put the whole command in quotes, its options too, as one argument: ssh_run_all.ps1 'df -h /'"; exit 1
+}
+if ($Yes -and $MyInvocation.Line -and $MyInvocation.Line -notmatch '(?i)(^|\s)-Yes(\s|:|$)') {
+  Write-Host 'Write -Yes in full to run without asking (or put the command in quotes)'; exit 1
+}
 $commandText = ($Command -join ' ').Trim()
 if (-not $commandText) {
   Write-Host "Which command? For example: ssh_run_all.ps1 'df -h /'"; exit 1
@@ -168,19 +184,35 @@ function Get-SshArguments($machine, [string[]]$first) {
 }
 
 $ok = @(); $failed = @(); $asks = @(); $unreachable = @()
-# what happened on a machine, from its exit code and (with -Parallel) what it printed
-function Write-Outcome($machine, [int]$code, [int]$seconds, [string]$printed) {
+# what happened on a machine, from its exit code. 255 is the code of ssh when it cannot log
+# in, but a command can end with it too: a second login, without the command, tells them
+# apart, and says why ssh could not log in
+function Write-Outcome($machine, [int]$code, [int]$seconds) {
   if ($code -eq 0) {
-    Write-Host "  done in ${seconds}s" -ForegroundColor Green; $script:ok += $machine.Name
-  } elseif ($code -eq 255 -and $printed -match 'Permission denied|No more authentication methods') {
-    Write-Host '  asks for a password: skipped (ssh_setup_keys.ps1 sets up the key)' -ForegroundColor Yellow; $script:asks += $machine.Name
-  } elseif ($code -eq 255 -and $printed -match 'Host key verification failed') {
-    Write-Host '  not known yet: log in once with ssh to confirm its fingerprint' -ForegroundColor Yellow; $script:unreachable += $machine.Name
-  } elseif ($code -eq 255) {
-    Write-Host '  ssh could not log in or reach it (its message is above)' -ForegroundColor Red; $script:unreachable += $machine.Name
-  } else {
-    Write-Host "  failed with exit code $code, after ${seconds}s" -ForegroundColor Red; $script:failed += "$($machine.Name) ($code)"
+    Write-Host "  done in ${seconds}s" -ForegroundColor Green; $script:ok += $machine.Name; return
   }
+  if ($code -eq 255) {
+    $probe = [IO.Path]::GetTempFileName()
+    try {
+      $status = Start-Program 'ssh' (@('-n', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'LogLevel=ERROR') +
+        $machine.Login + @($machine.Destination, 'exit')) -Output $probe -Wait
+      $printed = Read-Output $probe
+    } finally {
+      Remove-Item -LiteralPath $probe, "$probe.err" -ErrorAction SilentlyContinue
+    }
+    if ($status -ne 0) {
+      if ($printed -match 'Permission denied|No more authentication methods') {
+        Write-Host '  asks for a password: skipped (ssh_setup_keys.ps1 sets up the key)' -ForegroundColor Yellow; $script:asks += $machine.Name
+      } elseif ($printed -match 'Host key verification failed') {
+        Write-Host '  not known yet: log in once with ssh to confirm its fingerprint' -ForegroundColor Yellow; $script:unreachable += $machine.Name
+      } else {
+        $last = @($printed -split "`r?`n" | Where-Object { $_.Trim() }) | Select-Object -Last 1
+        Write-Host "  cannot reach it: $last" -ForegroundColor Red; $script:unreachable += $machine.Name
+      }
+      return
+    }
+  }
+  Write-Host "  failed with exit code $code, after ${seconds}s" -ForegroundColor Red; $script:failed += "$($machine.Name) ($code)"
 }
 
 if (-not $Parallel) {
@@ -196,7 +228,7 @@ if (-not $Parallel) {
     $arguments = @(Get-SshArguments $machine $first | ForEach-Object { Protect-Argument $_ })
     & ssh @arguments
     $code = $LASTEXITCODE
-    Write-Outcome $machine $code ([int]((Get-Date) - $start).TotalSeconds) ''
+    Write-Outcome $machine $code ([int]((Get-Date) - $start).TotalSeconds)
   }
 } else {
   if ($env:XDG_CACHE_HOME) { $cache = $env:XDG_CACHE_HOME }
@@ -230,7 +262,7 @@ if (-not $Parallel) {
     Write-Host $run.Machine.Name -ForegroundColor Cyan
     $printed = Read-Output $run.Log
     if ($printed) { Write-Host $printed.TrimEnd() }
-    Write-Outcome $run.Machine $run.Process.ExitCode $run.Seconds $printed
+    Write-Outcome $run.Machine $run.Process.ExitCode $run.Seconds
   }
 }
 
@@ -241,5 +273,5 @@ if ($failed.Count -gt 0) { Write-Host "Failed on: $($failed -join ' ')" -Foregro
 if ($asks.Count -gt 0) { Write-Host "Ask for a password, skipped: $($asks -join ' ')" -ForegroundColor Yellow }
 if ($unreachable.Count -gt 0) { Write-Host "Could not reach: $($unreachable -join ' ')" -ForegroundColor Red }
 if ($Parallel) { Write-Host "What each machine printed: $logs" }
-if ($failed.Count -gt 0 -or $unreachable.Count -gt 0) { exit 1 }
+if ($failed.Count -gt 0 -or $unreachable.Count -gt 0 -or $asks.Count -gt 0) { exit 1 }
 exit 0

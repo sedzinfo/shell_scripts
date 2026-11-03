@@ -1,15 +1,19 @@
 # Regenerates manifest.json, the file Posit Connect (Cloud) deploys a Shiny app from, in
 # every app of Documents\GitHub that already has one, so that it lists the package versions
-# installed now. Nothing is committed or pushed.
-#   shiny_update_manifests.ps1              all apps with a manifest.json
-#   shiny_update_manifests.ps1 golemirt     only these apps (also a first manifest)
-# Another folder than Documents\GitHub: shiny_update_manifests.ps1 -Root ~\Projects
-# Needs R and its rsconnect package.
+# installed now. It lists the apps and asks first. Files that git ignores (such as .Renviron)
+# are left out of the manifest, and an app that uses a package not installed here fails, as
+# the manifest would leave the package out. Nothing is committed or pushed.
+#   r_shiny_update_manifests.ps1              all apps with a manifest.json
+#   r_shiny_update_manifests.ps1 golemirt     only these apps (also a first manifest)
+#   r_shiny_update_manifests.ps1 -Yes         without asking first
+# Another folder than Documents\GitHub: r_shiny_update_manifests.ps1 -Root ~\Projects
+# Needs R and its rsconnect package, and git.
 
 param(
   [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
   [string[]]$Apps,
-  [string]$Root = $env:ROOT
+  [string]$Root = $env:ROOT,
+  [switch]$Yes
 )
 
 # anything but y/yes is no
@@ -51,6 +55,11 @@ if ($LASTEXITCODE -ne 0) {
   exit 1
 }
 
+# git tells which files it ignores, and whether a manifest changed
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+  Write-Host 'git is needed: winget install Git.Git'; exit 1
+}
+
 # the folder given, or Documents\GitHub (where GitHub Desktop puts the repositories), or ~\GitHub
 if (-not $Root) {
   $Root = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'GitHub'
@@ -79,6 +88,27 @@ if (-not $Apps) {
   }
 }
 
+# what is rewritten, and the question before anything is
+if ($Apps.Count -gt 0 -and -not $Yes) {
+  Write-Host "manifest.json is written anew in: $($Apps -join ' ')"
+  if ([Console]::IsInputRedirected) { Write-Host 'Not a terminal, so nothing can be asked: add -Yes to write them'; exit 1 }
+  if (-not (Test-Yes 'Write them?')) { Write-Host 'Nothing was changed'; exit 0 }
+}
+
+# the files of the app as rsconnect lists them, without the ones git ignores (such as
+# .Renviron, which would be deployed with its secrets); and a stop when a package they use is
+# not installed, which writeManifest would quietly leave out. Only single quotes in the R
+# code, as Windows PowerShell 5.1 drops the double quotes of an argument
+$manifestCode = @(
+  "files <- rsconnect::listDeploymentFiles('.')"
+  "git <- suppressWarnings(system2('git', c('ls-files', '-co', '--exclude-standard'), stdout = TRUE, stderr = FALSE))"
+  "if (is.null(attr(git, 'status'))) files <- intersect(files, git)"
+  "used <- unique(renv::dependencies(files, quiet = TRUE, progress = FALSE)`$Package)"
+  "missing <- setdiff(used, rownames(installed.packages()))"
+  "if (length(missing)) stop('not installed here, so the manifest would leave them out: ', toString(missing), call. = FALSE)"
+  "rsconnect::writeManifest(appDir = '.', appFiles = files, appPrimaryDoc = 'app.R')"
+) -join '; '
+
 $updated = @(); $unchanged = @(); $failed = @()
 
 foreach ($name in $Apps) {
@@ -89,9 +119,8 @@ foreach ($name in $Apps) {
     $failed += "${name}: no app.R"
     continue
   }
-  # the same call as by hand; it fails when a package the app uses is not installed
   Push-Location -LiteralPath $dir
-  $output = & $rscript -e "rsconnect::writeManifest(appDir = '.', appPrimaryDoc = 'app.R')" 2>&1
+  $output = & $rscript -e $manifestCode 2>&1
   $status = $LASTEXITCODE
   Pop-Location
   if ($status -eq 0) {
@@ -117,7 +146,7 @@ Write-Host "Updated: $($updated.Count)"
 $updated | ForEach-Object { Write-Host "  $_" }
 Write-Host "Unchanged: $($unchanged.Count)"
 if ($not_deployed.Count -gt 0) {
-  Write-Host 'Apps without a manifest.json, not touched (to make one: shiny_update_manifests.ps1 NAME):'
+  Write-Host 'Apps without a manifest.json, not touched (to make one: r_shiny_update_manifests.ps1 NAME):'
   $not_deployed | ForEach-Object { Write-Host "  $_" }
 }
 if ($updated.Count -gt 0) {

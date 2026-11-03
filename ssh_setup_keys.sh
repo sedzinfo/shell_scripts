@@ -85,6 +85,11 @@ elif [ ! -f "$key.pub" ]; then
   echo "No public key $key.pub"; exit 1
 fi
 echo "Key: $key.pub ($(ssh-keygen -l -f "$key.pub" | awk '{print $2, $NF}'))"
+# ssh tries only keys with these names by itself
+case "${key##*/}" in
+  id_rsa|id_ecdsa|id_ecdsa_sk|id_ed25519|id_ed25519_sk|id_xmss) ;;
+  *) echo "${yellow}ssh logs in with this key only when told to: -i $key on the machines' lines, or IdentityFile in ~/.ssh/config${reset}" ;;
+esac
 
 # a key with a passphrase logs in without asking only once ssh-agent holds it
 if ! ssh-keygen -y -P "" -f "$key" > /dev/null 2>&1; then
@@ -131,6 +136,11 @@ copy_args() {
   local i=0 option value
   copy=()
   while [ $i -lt ${#login_args[@]} ]; do
+    # -4 and -6 take no value, so that the next option is not taken for theirs
+    case "${login_args[$i]}" in
+      -4) copy+=(-o AddressFamily=inet); i=$((i + 1)); continue ;;
+      -6) copy+=(-o AddressFamily=inet6); i=$((i + 1)); continue ;;
+    esac
     option=${login_args[$i]:0:2}; value=${login_args[$i]:2}
     [ -z "$value" ] && { value=${login_args[$((i + 1))]}; i=$((i + 1)); }
     case "$option" in
@@ -145,9 +155,11 @@ copy_args() {
   done
 }
 
-# whether ssh logs in without asking anything; the error, if not, into login_error
+# whether ssh logs in without asking anything; the error, if not, into login_error.
+# ControlPath=none: a connection shared with an earlier login (ControlMaster in
+# ~/.ssh/config) would log in without testing the key
 logs_in() {
-  login_error=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "${login_args[@]}" "$destination" true 2>&1 < /dev/null)
+  login_error=$(ssh -o BatchMode=yes -o ConnectTimeout=10 -o ControlPath=none "${login_args[@]}" "$destination" true 2>&1 < /dev/null)
 }
 
 done_machines=(); asks=(); unreachable=(); already=0; set_up=0; line_number=0

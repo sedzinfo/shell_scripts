@@ -23,12 +23,13 @@ param(
   [switch]$Yes
 )
 
-# the first argument that is an existing folder is the folder, the others are repositories
+# the folder is given as a path (~\GitHub, ., ..\work, C:\work): a plain word is a
+# repository, as a repository's name may also be a folder here
 $Root = $null; $only = @()
 foreach ($arg in $Names) {
   if ($arg -like '-*') { Write-Host "Unknown option: $arg"; exit 1 }
   $path = $arg.Trim().Trim('"') -replace '^~', $HOME
-  if (-not $Root -and (Test-Path -LiteralPath $path -PathType Container)) {
+  if (-not $Root -and ($arg -match '[\\/]|^[A-Za-z]:' -or $arg -in '~', '.', '..')) {
     $Root = $path
   } else {
     $only += $arg
@@ -103,7 +104,8 @@ try {
   Write-Host ''
 
   $to_prune = @(); $total = 0; $nothing = 0; $seen = @{}
-  $would = '^prune: (\d+) files? would be pruned \((.*)\), done\.$'
+  # git-lfs before 3.5 starts the line with "prune: "
+  $would = '^(?:prune: )?(\d+) files? would be pruned \((.*)\), done\.$'
   foreach ($repository in $repositories) {
     $dir = $repository.FullName
     $repo = $repository.Name
@@ -168,13 +170,13 @@ try {
     $output = @(git -C $item.Dir lfs prune --verify-remote 2>&1 | ForEach-Object { "$_" -split "`r" })
     $status = $LASTEXITCODE
     # the last state of each line of progress
-    $output | Where-Object { $_ -match '^prune: .*done\.$' } | ForEach-Object { Write-Host "  $_" }
+    $output | Where-Object { $_ -match ', done\.$' } | ForEach-Object { Write-Host "  $_" }
     if ($status -ne 0) {
       if ($output -match 'missing on remote') {
         Write-Host "  $(@($output -match '^ \* ').Count) versions are not on origin: nothing deleted" -ForegroundColor Red
         Write-Host '    git lfs push --all origin uploads them'
       } else {
-        $output | Where-Object { $_ -and $_ -notmatch '^( \* |prune: )' } | Select-Object -Last 3 | ForEach-Object { Write-Host "  $_" }
+        $output | Where-Object { $_ -and $_ -notmatch '^ \* |, done\.$' } | Select-Object -Last 3 | ForEach-Object { Write-Host "  $_" }
         Write-Host '  git lfs prune failed: nothing deleted' -ForegroundColor Red
       }
       $failed += $item.Repo

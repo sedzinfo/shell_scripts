@@ -78,15 +78,18 @@ function Get-NvidiaDetails {
   return $details
 }
 
-# LibreHardwareMonitor or OpenHardwareMonitor, while one of them runs: its namespace
-$monitor = $null
-foreach ($namespace in 'root/LibreHardwareMonitor', 'root/OpenHardwareMonitor') {
-  try {
-    Get-CimInstance -Namespace $namespace -ClassName Sensor -ErrorAction Stop | Select-Object -First 1 | Out-Null
-    $monitor = $namespace
-    break
-  } catch { }
+# LibreHardwareMonitor or OpenHardwareMonitor, while one of them runs: its namespace. The
+# namespace can stay after the program closes, with no sensors in it, so it counts only with
+# sensors; and it is looked for on every refresh, as the program may start or stop meanwhile
+function Find-Monitor {
+  foreach ($namespace in 'root/LibreHardwareMonitor', 'root/OpenHardwareMonitor') {
+    try {
+      if (Get-CimInstance -Namespace $namespace -ClassName Sensor -ErrorAction Stop | Select-Object -First 1) { return $namespace }
+    } catch { }
+  }
+  return $null
 }
+$monitor = Find-Monitor
 
 # the screen is cleared only once; after that each refresh is written over the
 # previous one, so it does not flash (when the output goes to a file, refreshes follow each other)
@@ -99,6 +102,7 @@ $previous = 0
 
 try {
   while ($true) {
+    $monitor = Find-Monitor
     $os = Get-CimInstance Win32_OperatingSystem
     $available = [int]($os.FreePhysicalMemory / 1024)
     $total = [int]($os.TotalVisibleMemorySize / 1024)

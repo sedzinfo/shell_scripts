@@ -3,22 +3,27 @@
 # R package in ~/GitHub (or the folder given), one after the other, as
 # <package>.pdf at the top of its repository, where the build-tarball workflows
 # put it; or all in one folder with --to. It reports which manuals failed (with
-# LaTeX's error) and the pages of the others. Nothing is committed or pushed.
+# LaTeX's error) and the pages of the others. It lists the manuals and asks
+# first. Nothing is committed or pushed.
 #   r_pdf_all.sh [folder] [package ...]   every package, or only the ones named
 #   r_pdf_all.sh --to ~/manuals           all the PDFs in that folder instead
+#   r_pdf_all.sh --yes                    without asking first
+# The folder is given as a path (~/GitHub, ., ../work): a plain word is a package.
 # A package is a folder with a DESCRIPTION: a repository, or a folder in one
 # (rwf/rwf). Mirror repositories with the same package (crypto and golemcrypto)
 # each get their own PDF. Needs R and LaTeX. The exit code is 1 if any failed.
 
-root="$HOME/GitHub"; to=""; only=(); root_given=0; next_is_to=0
+root="$HOME/GitHub"; to=""; yes=0; only=(); root_given=0; next_is_to=0
 for arg in "$@"; do
   if [ $next_is_to -eq 1 ]; then to="${arg/#\~/$HOME}"; next_is_to=0; continue; fi
   case "$arg" in
     --to)      next_is_to=1 ;;
+    --yes)     yes=1 ;;
     -h|--help) sed -n '2,/^$/{s/^# \{0,1\}//;p}' "$0"; exit 0 ;;
     -*)        echo "Unknown option: $arg (see --help)"; exit 1 ;;
     *)
-      if [ $root_given -eq 0 ] && [ -d "${arg/#\~/$HOME}" ]; then
+      # a path is the folder (a package's name may also be a folder here)
+      if [ $root_given -eq 0 ] && [[ "$arg" == */* || "$arg" == '~' || "$arg" == . || "$arg" == .. ]]; then
         root="${arg/#\~/$HOME}"; root_given=1
       else
         only+=("$arg")
@@ -94,7 +99,7 @@ fi
 dirs=()
 while IFS= read -r description; do
   dir=$(dirname "$description")
-  name=$(awk -F': *' '$1 == "Package" { print $2; exit }' "$description")
+  name=$(awk -F': *' '$1 == "Package" { sub(/[ \t\r]+$/, "", $2); print $2; exit }' "$description")
   [ -n "$name" ] || continue
   if [ ${#only[@]} -gt 0 ]; then
     wanted=0
@@ -116,12 +121,20 @@ out="${XDG_CACHE_HOME:-$HOME/.cache}/r_pdf_all"
 mkdir -p "$out"
 
 echo "Making ${#dirs[@]} manual(s) of $root; logs in $out"
+# the question before anything is written
+if [ $yes -eq 0 ]; then
+  echo "The PDF manuals are written anew${to:+ in $to}, for: $(for dir in "${dirs[@]}"; do printf '%s ' "${dir#"$root"/}"; done)"
+  if [ ! -t 0 ]; then
+    echo "Not a terminal, so nothing can be asked: add --yes to write them"; exit 1
+  fi
+  yes_no "Write them?" || { echo "Nothing was changed"; exit 0; }
+fi
 
 failed=(); written=(); summary=()
 declare -A made_from=()
 for dir in "${dirs[@]}"; do
   label=${dir#"$root"/}
-  name=$(awk -F': *' '$1 == "Package" { print $2; exit }' "$dir/DESCRIPTION")
+  name=$(awk -F': *' '$1 == "Package" { sub(/[ \t\r]+$/, "", $2); print $2; exit }' "$dir/DESCRIPTION")
   log="$out/${label//\//_}.log"
   # in the --to folder one PDF per package is enough: a mirror repository of a
   # package already made there is skipped
@@ -140,7 +153,11 @@ for dir in "${dirs[@]}"; do
   separator
   echo "${bold}$name${reset}  ($label -> ${pdf#"$root"/})"
 
-  if (cd "$out" && R CMD Rd2pdf "$dir" --force --no-preview --output="$pdf" > "$log" 2>&1) && [ -s "$pdf" ]; then
+  # written now, and not an older PDF left as it was: Rd2pdf does not fail when it cannot
+  # replace one (such as one open in a viewer that locks it)
+  touch "$out/.start"
+  if (cd "$out" && R CMD Rd2pdf "$dir" --force --no-preview --output="$pdf" > "$log" 2>&1) &&
+     [ -s "$pdf" ] && [ "$pdf" -nt "$out/.start" ]; then
     written+=("$pdf")
     pages=""
     command -v pdfinfo > /dev/null && pages=$(pdfinfo "$pdf" 2> /dev/null | awk '/^Pages:/ { print $2 }')

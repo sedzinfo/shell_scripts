@@ -19,12 +19,13 @@ param(
   [switch]$History
 )
 
-# the first argument that is an existing folder is the folder, the others are repositories
+# the folder is given as a path (~\GitHub, ., ..\work, C:\work): a plain word is a
+# repository, as a repository's name may also be a folder here
 $Root = $null; $only = @()
 foreach ($arg in $Names) {
   if ($arg -like '-*') { Write-Host "Unknown option: $arg"; exit 1 }
   $path = $arg.Trim().Trim('"') -replace '^~', $HOME
-  if (-not $Root -and (Test-Path -LiteralPath $path -PathType Container)) {
+  if (-not $Root -and ($arg -match '[\\/]|^[A-Za-z]:' -or $arg -in '~', '.', '..')) {
     $Root = $path
   } else {
     $only += $arg
@@ -223,8 +224,9 @@ try {
     # them); git lfs says how much it would free
     $prune_note = $null
     if ($History -and $lfs -and (Test-Path -LiteralPath (Join-Path (Join-Path $dir '.git') 'lfs') -PathType Container)) {
-      $pruned = '^prune: (\d+) files? would be pruned \((.*)\), done\.$'
-      $line = git -C $dir lfs prune --dry-run 2>&1 | ForEach-Object { "$_" } | Where-Object { $_ -match $pruned } | Select-Object -Last 1
+      # git-lfs before 3.5 starts the line with "prune: "
+      $pruned = '^(?:prune: )?(\d+) files? would be pruned \((.*)\), done\.$'
+      $line = git -C $dir lfs prune --dry-run 2>&1 | ForEach-Object { if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { "$_" } } | Where-Object { $_ -match $pruned } | Select-Object -Last 1
       if ($line -match $pruned -and [int]$Matches[1] -gt 0) {
         $prune_note = "git lfs prune would free $($Matches[2]): the local copies of $($Matches[1]) old LFS versions (GitHub keeps them)"
       }

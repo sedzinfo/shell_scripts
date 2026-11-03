@@ -7,9 +7,9 @@
 # step at a time, shows what the step installs and asks (y) before installing
 # it; a step that fails does not stop the others. At the end it lists what failed
 # and what is left to do by hand.
-#   new_machine.sh          asks before each step
-#   new_machine.sh --yes    every step, without asking
-#   new_machine.sh --list   only shows the steps and what they install
+#   machine_new.sh          asks before each step
+#   machine_new.sh --yes    every step, without asking
+#   machine_new.sh --list   only shows the steps and what they install
 
 yes=0; list=0
 for arg in "$@"; do
@@ -106,7 +106,8 @@ apt_install() {
       echo "${yellow}Not available on this release, skipped: $package${reset}"
     fi
   done
-  [ ${#available[@]} -eq 0 ] && return 0
+  # nothing to install is no success: the step is listed as failed, not installed
+  [ ${#available[@]} -eq 0 ] && return 1
   apt_get install -y "${available[@]}"
 }
 
@@ -119,6 +120,23 @@ install_deb() {  # name, address
 # whether an apt repository is set up already (by an earlier run, or by the app itself)
 has_repository() {
   grep -rqs --include='*.list' --include='*.sources' "^[^#]*$1" /etc/apt/sources.list /etc/apt/sources.list.d/
+}
+
+# sets up the apt repository of a maker: its key and the file that tells apt about
+# it. When apt then cannot use it (such as a release the maker does not build for),
+# both are removed again, so that it does not count as set up on the next run.
+# Whether apt uses it is what apt-cache policy lists, as an apt update can also
+# fail for another repository
+add_repository() {  # key address, key file, sources file, its text, the address apt lists
+  curl -fsSL -o "$tmp/key" "$1" || return
+  sudo install -D -m 644 "$tmp/key" "$2" || return
+  printf '%s\n' "$4" | sudo tee "$3" > /dev/null || return
+  apt_get update
+  if ! apt-cache policy | grep -qF "$5"; then
+    echo "${red}apt cannot use the repository $5, so it is removed again${reset}"
+    sudo rm -f -- "$3" "$2"
+    return 1
+  fi
 }
 
 # for a step with several apps: installs each one, even after one fails, and
@@ -144,9 +162,19 @@ nvidia_step() {
   # the driver Mint's Driver Manager recommends
   sudo ubuntu-drivers install || return
   apt_install nvidia-settings || return
-  # Coolbits 4 lets nvidia-settings set the fan speed
-  sudo nvidia-xconfig --cool-bits=4 || return
   restart=1
+  # Coolbits 4 lets nvidia-settings set the fan speed. nvidia-xconfig writes an
+  # /etc/X11/xorg.conf for the NVIDIA card alone, which leaves the screen blank where
+  # it is wired to another GPU (a laptop with PRIME): with another GPU it asks
+  # first, and with --yes it leaves it out
+  if [ "$(lspci 2> /dev/null | grep -Ei 'vga|3d|display' | grep -vic nvidia)" -gt 0 ]; then
+    echo "${yellow}This computer also has another GPU (a laptop's, or a desktop's built-in one)${reset}"
+    if [ $yes -eq 1 ] || ! yes_no "Write /etc/X11/xorg.conf for fan control anyway? On a laptop the screen can stay blank"; then
+      echo "Fan control left out; sudo nvidia-xconfig --cool-bits=4 sets it up later"
+      return 0
+    fi
+  fi
+  sudo nvidia-xconfig --cool-bits=4
 }
 
 tools_step() { apt_install "${tools[@]}" && git lfs install; }
@@ -167,11 +195,8 @@ pyenv_step() {
 r_step() {
   local url=https://cloud.r-project.org/bin/linux/ubuntu repos packages
   if ! has_repository /bin/linux/ubuntu; then
-    curl -fsSL -o "$tmp/cran.asc" "$url/marutter_pubkey.asc" || return
-    sudo install -D -m 644 "$tmp/cran.asc" /etc/apt/keyrings/cran_ubuntu_key.asc || return
-    echo "deb [signed-by=/etc/apt/keyrings/cran_ubuntu_key.asc] $url $codename-cran40/" |
-      sudo tee /etc/apt/sources.list.d/cran-r.list > /dev/null
-    apt_get update || return
+    add_repository "$url/marutter_pubkey.asc" /etc/apt/keyrings/cran_ubuntu_key.asc /etc/apt/sources.list.d/cran-r.list \
+      "deb [signed-by=/etc/apt/keyrings/cran_ubuntu_key.asc] $url $codename-cran40/" "$url" || return
   fi
   apt_install "${r_apt[@]}" || return
   sudo R CMD javareconf
@@ -250,11 +275,10 @@ vscode_app() {
 
 sublime_app() {
   if ! has_repository download.sublimetext.com; then
-    curl -fsSL -o "$tmp/sublime.asc" https://download.sublimetext.com/sublimehq-pub.gpg || return
-    sudo install -D -m 644 "$tmp/sublime.asc" /etc/apt/keyrings/sublimehq-pub.asc || return
-    printf 'Types: deb\nURIs: https://download.sublimetext.com/\nSuites: apt/stable/\nSigned-By: /etc/apt/keyrings/sublimehq-pub.asc\n' |
-      sudo tee /etc/apt/sources.list.d/sublime-text.sources > /dev/null
-    apt_get update || return
+    add_repository https://download.sublimetext.com/sublimehq-pub.gpg /etc/apt/keyrings/sublimehq-pub.asc \
+      /etc/apt/sources.list.d/sublime-text.sources \
+      "$(printf 'Types: deb\nURIs: https://download.sublimetext.com/\nSuites: apt/stable/\nSigned-By: /etc/apt/keyrings/sublimehq-pub.asc')" \
+      https://download.sublimetext.com || return
   fi
   apt_install sublime-text
 }
@@ -284,11 +308,9 @@ dropbox_app() {
 
 insync_app() {
   if ! has_repository apt.insync.io; then
-    curl -fsSL -o "$tmp/insync.asc" https://apt.insync.io/insynchq.gpg || return
-    sudo install -D -m 644 "$tmp/insync.asc" /etc/apt/keyrings/insynchq.asc || return
-    echo "deb [signed-by=/etc/apt/keyrings/insynchq.asc] https://apt.insync.io/ubuntu $codename non-free contrib" |
-      sudo tee /etc/apt/sources.list.d/insync.list > /dev/null
-    apt_get update || return
+    add_repository https://apt.insync.io/insynchq.gpg /etc/apt/keyrings/insynchq.asc /etc/apt/sources.list.d/insync.list \
+      "deb [signed-by=/etc/apt/keyrings/insynchq.asc] https://apt.insync.io/ubuntu $codename non-free contrib" \
+      https://apt.insync.io/ubuntu || return
   fi
   apt_install insync
 }
@@ -372,7 +394,7 @@ fi
 
 step "System updates" "Everything already installed, to the newest version (apt full-upgrade)." updates_step
 if lspci 2> /dev/null | grep -qi nvidia; then
-  step "NVIDIA driver" "The driver Mint's Driver Manager recommends (ubuntu-drivers), nvidia-settings, and fan control in nvidia-settings (Coolbits 4, written to /etc/X11/xorg.conf). Needs a restart." nvidia_step
+  step "NVIDIA driver" "The driver Mint's Driver Manager recommends (ubuntu-drivers), nvidia-settings, and fan control in nvidia-settings (Coolbits 4, written to /etc/X11/xorg.conf; asked again on a computer with another GPU). Needs a restart." nvidia_step
 fi
 step "Tools" "${tools[*]}" tools_step
 step "System and hardware tools" "${system_tools[*]}" system_tools_step

@@ -2,9 +2,11 @@
 # Documents\GitHub (or the folder given), one after the other, as <package>.pdf at the top of
 # its repository, where the build-tarball workflows put it; or all in one folder with -To.
 # It reports which manuals failed (with LaTeX's error) and the size of the others. Nothing is
-# committed or pushed.
+# committed or pushed. It lists the manuals and asks first.
 #   r_pdf_all.ps1 [folder] [package ...]   every package, or only the ones named
 #   r_pdf_all.ps1 -To ~\manuals            all the PDFs in that folder instead
+#   r_pdf_all.ps1 -Yes                     without asking first
+# The folder is given as a path (~\GitHub, ., ..\work, C:\work): a plain word is a package.
 # A package is a folder with a DESCRIPTION: a repository, or a folder in one (rwf\rwf).
 # Mirror repositories with the same package (crypto and golemcrypto) each get their own PDF.
 # Needs R and LaTeX (MiKTeX). The exit code is 1 if any failed.
@@ -12,7 +14,8 @@
 param(
   [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
   [string[]]$Names,
-  [string]$To
+  [string]$To,
+  [switch]$Yes
 )
 
 # anything but y/yes is no
@@ -35,12 +38,13 @@ function Find-Rscript {
     Select-Object -Last 1 -ExpandProperty FullName
 }
 
-# the first argument that is an existing folder is the folder, the others are packages
+# the folder is given as a path: a plain word is a package, as a package's name may also be a
+# folder here
 $Root = $null; $only = @()
 foreach ($arg in $Names) {
   if ($arg -like '-*') { Write-Host "Unknown option: $arg"; exit 1 }
   $path = $arg.Trim().Trim('"') -replace '^~', $HOME
-  if (-not $Root -and (Test-Path -LiteralPath $path -PathType Container)) {
+  if (-not $Root -and ($arg -match '[\\/]|^[A-Za-z]:' -or $arg -in '~', '.', '..')) {
     $Root = $path
   } else {
     $only += $arg
@@ -144,6 +148,13 @@ $out = Join-Path $cache 'r_pdf_all'
 New-Item -ItemType Directory -Path $out -Force | Out-Null
 
 Write-Host "Making $($dirs.Count) manual(s) of $Root; logs in $out"
+# the question before anything is written
+if (-not $Yes) {
+  $where = if ($To) { " in $To" } else { '' }
+  Write-Host "The PDF manuals are written anew$where, for: $(($dirs | ForEach-Object { Get-Relative $_ }) -join ' ')"
+  if ([Console]::IsInputRedirected) { Write-Host 'Not a terminal, so nothing can be asked: add -Yes to write them'; exit 1 }
+  if (-not (Test-Yes 'Write them?')) { Write-Host 'Nothing was changed'; exit 0 }
+}
 
 $failed = @(); $written = @(); $summary = @()
 $made_from = New-Object 'System.Collections.Generic.Dictionary[string,string]'
@@ -170,16 +181,21 @@ foreach ($dir in $dirs) {
   Write-Host ('#' * 80)
   Write-Host "$name  ($label -> $(Get-Relative $pdf))"
 
+  # written now, and not an older PDF left as it was: Rd2pdf does not fail when it cannot
+  # replace one (such as one open in a viewer that locks it). A blank line R writes to its
+  # errors comes as an error record, which Windows PowerShell 5.1 would show as its type
+  $start = Get-Date
   Push-Location -LiteralPath $out
   try {
-    $output = & $r CMD Rd2pdf $dir --force --no-preview "--output=$pdf" 2>&1 | ForEach-Object { "$_" }
+    $output = & $r CMD Rd2pdf $dir --force --no-preview "--output=$pdf" 2>&1 | ForEach-Object {
+      if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { "$_" } }
     $status = $LASTEXITCODE
   } finally {
     Pop-Location
   }
   [IO.File]::WriteAllText($log, (@($output) -join [Environment]::NewLine) + [Environment]::NewLine)
   $file = Get-Item -LiteralPath $pdf -ErrorAction SilentlyContinue
-  if ($status -eq 0 -and $file -and $file.Length -gt 0) {
+  if ($status -eq 0 -and $file -and $file.Length -gt 0 -and $file.LastWriteTime -ge $start) {
     $written += $pdf
     $pages = $null
     if (Get-Command pdfinfo -ErrorAction SilentlyContinue) {

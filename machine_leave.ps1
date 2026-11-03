@@ -10,8 +10,8 @@
 # Other people's repositories (such as your employer's) and SSH keys that are not on your
 # GitHub account are never touched. At the end it lists what only you can do on the websites,
 # such as deleting the key from your GitHub account.
-#   leave_machine.ps1 [folder] [user]     default Documents\GitHub (or ~\GitHub) and sedzinfo
-#   leave_machine.ps1 -Check              only the report, nothing is removed
+#   machine_leave.ps1 [folder] [user]     default Documents\GitHub (or ~\GitHub) and sedzinfo
+#   machine_leave.ps1 -Check              only the report, nothing is removed
 
 param(
   [string]$Folder,
@@ -80,18 +80,42 @@ while (-not (Test-Path -LiteralPath $Folder -PathType Container)) {
 }
 $Folder = (Resolve-Path -LiteralPath $Folder).ProviderPath
 
-# files and folders that R, Python and the builds make again (caches, .Rhistory, ...)
-$remade = '(^|/)(\.Rproj\.user|\.Rhistory|\.RData|\.Ruserdata|\.DS_Store|__pycache__|node_modules|venv|\.venv|renv/library|\.quarto|_freeze|_site|[^/]*_cache|[^/]*_files|[^/]*\.Rcheck)/?$'
+# whether an entry that git does not track (relative to the repository; a folder ends in /)
+# is made again by R, Python or a build, so that nothing is lost with it (caches, .Rhistory,
+# ...). A folder such as report_files/ or report_cache/ counts only next to its report.Rmd or
+# report.qmd, and a saved workspace (.RData) never does
+function Test-Remade([string]$dir, [string]$entry) {
+  $path = $entry.TrimEnd('/')
+  $base = ($path -split '/')[-1]
+  $names = '.Rproj.user', '.Rhistory', '.Ruserdata', '.DS_Store', '__pycache__', 'node_modules', 'venv', '.venv', '.quarto', '_freeze', '_site'
+  if ($names -ccontains $base -or $base -clike '*.Rcheck') { return $true }
+  if ($path -ceq 'renv/library' -or $path -clike '*/renv/library') { return $true }
+  if ($base -cmatch '^(.+)_(files|cache)$') {
+    $stem = $path.Substring(0, $path.Length - $base.Length) + $Matches[1]
+    foreach ($extension in 'Rmd', 'qmd', 'Rmarkdown', 'rmd') {
+      if (Test-Path -LiteralPath (Join-Path $dir "$stem.$extension")) { return $true }
+    }
+  }
+  return $false
+}
+
+# the entries of a git command run with -z, which separates them with a NUL character, so
+# that names with spaces or other letters come as they are
+function Split-Entries($output) {
+  return @((@($output) -join '') -split "`0" | Where-Object { $_ })
+}
 
 # what of a repository is not on GitHub, as one text (empty: all of it is)
 function Get-NotOnGitHub([string]$dir) {
   $reasons = @()
   # changed files, and new ones except the ones that are made again (empty folders hold nothing)
-  $n = @(git -C $dir status --porcelain --untracked-files=no).Count +
-    @(git -C $dir ls-files --others --exclude-standard --directory --no-empty-directory | Where-Object { $_ -notmatch $remade }).Count
+  $new = @(Split-Entries (git -C $dir ls-files -z --others --exclude-standard --directory --no-empty-directory) |
+    Where-Object { -not (Test-Remade $dir $_) })
+  $n = @(git -C $dir status --porcelain --untracked-files=no).Count + $new.Count
   if ($n -gt 0) { $reasons += "$n uncommitted" }
-  # commits of any local branch, not only the current one, that GitHub does not have
-  $n = [int](git -C $dir rev-list --count --branches --not --remotes=origin)
+  # commits that GitHub does not have: of any local branch, not only the current one, and of
+  # a tag or a detached HEAD
+  $n = [int](git -C $dir rev-list --count '--exclude=refs/remotes/*' --exclude=refs/stash --all --not --remotes=origin)
   if ($n -gt 0) { $reasons += "$n to push" }
   $n = @(git -C $dir stash list).Count
   if ($n -gt 0) { $reasons += "$n stashed" }
@@ -102,9 +126,11 @@ if ($Check) { Write-Host '-Check: only the report, nothing is removed' }
 
 #####################################################################
 Write-Title "1. Your repositories in $(Get-Short $Folder)"
-$mine = @(); $others = @()
+$mine = @(); $others = @(); $links = @()
 foreach ($d in Get-ChildItem -LiteralPath $Folder -Directory) {
   if (-not (Test-Path -LiteralPath (Join-Path $d.FullName '.git'))) { continue }
+  # a link (junction) to a repository elsewhere: deleting it would delete only the link
+  if ($d.Attributes -band [IO.FileAttributes]::ReparsePoint) { $links += $d.FullName; continue }
   $url = git -C $d.FullName config --get remote.origin.url
   # yours: the origin is github.com/USER (GitHub names ignore case)
   if ("$url" -match "github\.com[:/]$([regex]::Escape($User))/") { $mine += $d.FullName } else { $others += $d.FullName }
@@ -120,6 +146,10 @@ $git = (Get-Command git).Source
 $fetches = @(foreach ($dir in $mine) {
   $info = New-Object System.Diagnostics.ProcessStartInfo $git, "-C `"$dir`" fetch -q --prune origin"
   $info.UseShellExecute = $false
+  # with the ssh command of the repository, if it has one (core.sshCommand)
+  $ssh = git -C $dir config core.sshCommand
+  if (-not $ssh) { $ssh = 'ssh' }
+  $info.EnvironmentVariables['GIT_SSH_COMMAND'] = "$ssh -o BatchMode=yes"
   $info.RedirectStandardError = $true
   $info.CreateNoWindow = $true
   $process = [System.Diagnostics.Process]::Start($info)
@@ -145,16 +175,18 @@ foreach ($dir in $mine) {
   $safe += $dir
   Write-Note $name 'completely on GitHub' 'Green'
   # files that git ignores are not on GitHub either and go with the repository
-  $ignored = @(git -C $dir status --porcelain --ignored | Where-Object { $_.StartsWith('!! ') } |
-    ForEach-Object { $_.Substring(3) } | Where-Object { $_ -notmatch $remade })
+  $ignored = @(Split-Entries (git -C $dir status --porcelain -z --ignored) | Where-Object { $_.StartsWith('!! ') } |
+    ForEach-Object { $_.Substring(3) } | Where-Object { -not (Test-Remade $dir $_) })
   if ($ignored.Count -gt 0) {
-    $more = if ($ignored.Count -gt 3) { " and $($ignored.Count - 3) more" } else { '' }
-    Write-Note '' "not in git, deleted with it: $(($ignored | Select-Object -First 3) -join ' ')$more" 'Yellow'
+    $more = if ($ignored.Count -gt 10) { " and $($ignored.Count - 10) more" } else { '' }
+    Write-Note '' "not in git, deleted with it: $(($ignored | Select-Object -First 10) -join ' ')$more" 'Yellow'
   }
 }
+$local_only = 0
 foreach ($dir in $others) {
   $url = git -C $dir config --get remote.origin.url
   if (-not $url) {
+    $local_only++
     Write-Note (Split-Path $dir -Leaf) 'only on this computer (no remote), left alone' 'Red'
   } else {
     # git@github.com:owner/name.git or https://github.com/owner/name.git -> github.com/owner
@@ -162,6 +194,9 @@ foreach ($dir in $others) {
     $owner = ([regex]':').Replace($owner, '/', 1) -replace '/[^/]*$', ''
     Write-Note (Split-Path $dir -Leaf) "not yours ($owner), left alone" ''
   }
+}
+foreach ($dir in $links) {
+  Write-Note (Split-Path $dir -Leaf) "a link to $((Get-Item -LiteralPath $dir).Target), left alone" 'Yellow'
 }
 
 if ($kept -gt 0) {
@@ -215,6 +250,8 @@ if ($null -eq $github_keys) {
   $materials = @("$github_keys" -split "`r?`n" | Where-Object { $_.Trim() } | ForEach-Object { ($_ -split '\s+')[1] })
   $personal = @(); $other = @()
   foreach ($pub in Get-ChildItem -LiteralPath (Join-Path $HOME '.ssh') -Filter '*.pub' -File -ErrorAction SilentlyContinue) {
+    # a .pub without its private key is not this computer's key (a copy from another one)
+    if (-not (Test-Path -LiteralPath ($pub.FullName -replace '\.pub$', ''))) { continue }
     $material = ((Get-Content -LiteralPath $pub.FullName -TotalCount 1) -split '\s+')[1]
     # base64, so letter case matters
     if ($material -and $materials -ccontains $material) {
@@ -382,5 +419,5 @@ if ($accounts.Count -gt 0) {
 }
 Write-Host '  - Sign out of GitHub and your other accounts in the browsers, and delete saved passwords'
 Write-Host "  - Your own files outside $(Get-Short $Folder), such as in Desktop, Documents and Downloads"
-if ($kept -gt 0) { exit 1 }
+if ($kept -gt 0 -or $local_only -gt 0) { exit 1 }
 exit 0

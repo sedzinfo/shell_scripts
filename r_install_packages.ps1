@@ -57,7 +57,7 @@ if (-not $rscript) {
 
 # R's own library in the user folder, so no administrator rights are needed for R packages
 & $rscript -e "dir.create(Sys.getenv('R_LIBS_USER'), recursive = TRUE, showWarnings = FALSE)"
-$env:R_LIBS_USER = & $rscript -e "cat(Sys.getenv('R_LIBS_USER'))"
+$library = & $rscript -e "cat(Sys.getenv('R_LIBS_USER'))"
 
 # pak works out what to install and installs it
 & $rscript -e "quit(status = !requireNamespace('pak', quietly = TRUE))" 2> $null
@@ -93,8 +93,14 @@ if (nzchar(description)) {
   wanted <- unlist(lapply(d[!is.na(d)], function(x) trimws(sub("[(].*", "", strsplit(x, ",")[[1]]))))
   cat("From", sub(paste0(dirname(repo), "/"), "", description, fixed = TRUE), "\n")
 } else {
-  if (!requireNamespace("renv", quietly = TRUE)) pak::pkg_install("renv", ask = FALSE)
-  wanted <- unique(renv::dependencies(repo, progress = FALSE, quiet = TRUE)$Package)
+  # pak reads the library() and :: calls itself, so nothing is installed for it
+  if ("scan_deps" %in% getNamespaceExports("pak")) {
+    wanted <- unique(pak::scan_deps(repo, root = repo)$package)
+  } else if (requireNamespace("renv", quietly = TRUE)) {
+    wanted <- unique(renv::dependencies(repo, progress = FALSE, quiet = TRUE)$Package)
+  } else {
+    stop("this pak is too old to read the files: pak::pak_update() updates it", call. = FALSE)
+  }
   cat("From the library() and :: calls of the .R/.Rmd/.qmd files\n")
 }
 base <- rownames(installed.packages(priority = "base"))
@@ -104,6 +110,9 @@ missing <- wanted[!vapply(wanted, function(p) nzchar(system.file(package = p)), 
 cat(length(wanted), "R packages needed,", length(missing), "not installed\n")
 writeLines(missing, Sys.getenv("OUT"))
 '@)
+  # put back afterwards, as a script shares its environment with the PowerShell window
+  $saved = @{}
+  foreach ($name in 'REPO', 'DESCRIPTION_FILE', 'OUT') { $saved[$name] = [Environment]::GetEnvironmentVariable($name) }
   $env:REPO = $Repo
   $env:DESCRIPTION_FILE = if ($description) { $description } else { '' }
   $env:OUT = $list
@@ -112,6 +121,7 @@ writeLines(missing, Sys.getenv("OUT"))
   $missing_r = @(Get-Content -LiteralPath $list | Where-Object { $_ })
 } finally {
   Remove-Item -LiteralPath $code, $list -ErrorAction SilentlyContinue
+  if ($saved) { foreach ($name in $saved.Keys) { [Environment]::SetEnvironmentVariable($name, $saved[$name]) } }
 }
 
 # 1. R packages
@@ -126,7 +136,7 @@ if ($missing_r.Count -eq 0) {
     $row = $missing_r[$i..([math]::Min($i + $columns, $missing_r.Count) - 1)]
     Write-Host ('  ' + (($row | ForEach-Object { $_.PadRight($width) }) -join '')).TrimEnd()
   }
-  if (Test-Yes "Install them (into $env:R_LIBS_USER)?") {
+  if (Test-Yes "Install them (into $library)?") {
     & $rscript -e "pak::pkg_install(commandArgs(TRUE), ask = FALSE, lib = Sys.getenv('R_LIBS_USER'))" @missing_r
   }
 }

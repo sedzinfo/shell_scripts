@@ -26,11 +26,16 @@ $attention = 0
 foreach ($dir in Get-ChildItem -LiteralPath $Folder -Directory) {
   $path = $dir.FullName
   if (-not (Test-Path -LiteralPath (Join-Path $path '.git'))) { continue }
-  $branch = git -C $path rev-parse --abbrev-ref HEAD 2> $null
-  if (-not $NoFetch) { git -C $path fetch -q 2> $null }
+  # the branch, also in a repository without commits yet
+  $branch = git -C $path symbolic-ref -q --short HEAD 2> $null
+  if (-not $branch) { $branch = 'HEAD' }
 
   # each note is its text and its color
   $notes = @()
+  if (-not $NoFetch) {
+    git -C $path fetch -q 2> $null
+    if ($LASTEXITCODE -ne 0) { $notes += , @('not fetched', 'Yellow') }
+  }
   $changed = @(git -C $path status --porcelain).Count
   if ($changed -gt 0) { $notes += , @("$changed uncommitted", 'Red') }
   git -C $path rev-parse --verify -q '@{u}' *> $null
@@ -44,6 +49,16 @@ foreach ($dir in Get-ChildItem -LiteralPath $Folder -Directory) {
   } else {
     $notes += , @('no upstream branch', 'Yellow')
   }
+  # the other branches with commits that are on no branch of GitHub, and the stashes
+  $others = 0
+  foreach ($ref in @(git -C $path for-each-ref --format='%(refname)' refs/heads)) {
+    if ($ref -ceq "refs/heads/$branch") { continue }
+    if ([int](git -C $path rev-list --count $ref --not --remotes) -gt 0) { $others++ }
+  }
+  if ($others -eq 1) { $notes += , @('1 other branch not on GitHub', 'Red') }
+  if ($others -gt 1) { $notes += , @("$others other branches not on GitHub", 'Red') }
+  $stashes = @(git -C $path stash list).Count
+  if ($stashes -gt 0) { $notes += , @("$stashes stashed", 'Red') }
 
   Write-Host ('{0,-32} {1,-12} ' -f $dir.Name, $branch) -NoNewline
   if ($notes.Count -eq 0) {

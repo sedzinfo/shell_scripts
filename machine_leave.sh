@@ -10,12 +10,16 @@
 # Other people's repositories (such as your employer's) and SSH keys that are not
 # on your GitHub account are never touched. At the end it lists what only you can
 # do on the websites, such as deleting the key from your GitHub account.
-#   leave_machine.sh [folder] [user]     default ~/GitHub and sedzinfo
-#   leave_machine.sh --check             only the report, nothing is removed
+#   machine_leave.sh [folder] [user]     default ~/GitHub and sedzinfo
+#   machine_leave.sh --check             only the report, nothing is removed
 
 root="$HOME/GitHub"; user="sedzinfo"; check=0; positional=()
 for arg in "$@"; do
-  [ "$arg" = "--check" ] && check=1 || positional+=("$arg")
+  case "$arg" in
+    --check)   check=1 ;;
+    -h|--help) sed -n '2,/^$/{s/^# \{0,1\}//;p}' "$0"; exit 0 ;;
+    *)         positional+=("$arg") ;;
+  esac
 done
 [ ${#positional[@]} -ge 1 ] && root="${positional[0]/#\~/$HOME}"
 [ ${#positional[@]} -ge 2 ] && user="${positional[1]}"
@@ -43,18 +47,40 @@ short() {
   [[ "$1" == "$HOME"/* ]] && echo "~${1#"$HOME"}" || echo "$1"
 }
 
-# files and folders that R, Python and the builds make again (caches, .Rhistory, ...)
-remade='(^|/)(\.Rproj\.user|\.Rhistory|\.RData|\.Ruserdata|\.DS_Store|__pycache__|node_modules|venv|\.venv|renv/library|\.quarto|_freeze|_site|[^/]*_cache|[^/]*_files|[^/]*\.Rcheck)/?$'
+# whether an entry that git does not track (relative to the repository $1; a
+# folder ends in /) is made again by R, Python or a build, so that nothing is lost
+# with it (caches, .Rhistory, ...). A folder such as report_files/ or
+# report_cache/ counts only next to its report.Rmd or report.qmd, and a saved
+# workspace (.RData) never does
+remade() {
+  local path=${2%/} base stem extension
+  base=${path##*/}
+  case "$base" in
+    .Rproj.user|.Rhistory|.Ruserdata|.DS_Store|__pycache__|node_modules|venv|.venv|.quarto|_freeze|_site|*.Rcheck)
+      return 0 ;;
+  esac
+  [[ "$path" == renv/library || "$path" == */renv/library ]] && return 0
+  if [[ "$base" == ?*_files || "$base" == ?*_cache ]]; then
+    stem=${path%_*}
+    for extension in Rmd qmd Rmarkdown rmd; do
+      [ -e "$1/$stem.$extension" ] && return 0
+    done
+  fi
+  return 1
+}
 
 # what of a repository is not on GitHub, one reason per line (no lines: all of it is)
 not_on_github() {
-  local n
+  local n entry
   # changed files, and new ones except the ones that are made again (empty folders hold nothing)
-  n=$(( $(git -C "$1" status --porcelain --untracked-files=no | wc -l) +
-        $(git -C "$1" ls-files --others --exclude-standard --directory --no-empty-directory | grep -cvE "$remade") ))
+  n=$(git -C "$1" status --porcelain --untracked-files=no | wc -l)
+  while IFS= read -r -d '' entry; do
+    remade "$1" "$entry" || n=$((n + 1))
+  done < <(git -C "$1" ls-files -z --others --exclude-standard --directory --no-empty-directory)
   [ "$n" -gt 0 ] && echo "$n uncommitted"
-  # commits of any local branch, not only the current one, that GitHub does not have
-  n=$(git -C "$1" rev-list --count --branches --not --remotes=origin)
+  # commits that GitHub does not have: of any local branch, not only the current
+  # one, and of a tag or a detached HEAD
+  n=$(git -C "$1" rev-list --count --exclude='refs/remotes/*' --exclude=refs/stash --all --not --remotes=origin)
   [ "$n" -gt 0 ] && echo "$n to push"
   n=$(git -C "$1" stash list | wc -l)
   [ "$n" -gt 0 ] && echo "$n stashed"
@@ -64,10 +90,15 @@ not_on_github() {
 
 #####################################################################
 echo "${bold}1. Your repositories in $(short "$root")${reset}"
-mine=(); others=()
+mine=(); others=(); links=()
+shopt -s dotglob
 for dir in "$root"/*/; do
   dir=${dir%/}
-  [ -d "$dir/.git" ] || continue
+  [ -e "$dir/.git" ] || continue
+  # a link to a repository elsewhere: deleting it would delete only the link
+  if [ -L "$dir" ]; then
+    links+=("$dir"); continue
+  fi
   url=$(git -C "$dir" config --get remote.origin.url)
   # yours: the origin is github.com/USER (GitHub names ignore case)
   if [[ "${url,,}" =~ github\.com[:/]${user,,}/ ]]; then
@@ -82,7 +113,9 @@ done
 unreachable=$(mktemp -d)
 trap 'rm -rf "$unreachable"' EXIT
 for dir in "${mine[@]}"; do
-  GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -o BatchMode=yes" \
+  # with the ssh command of the repository, if it has one (core.sshCommand)
+  ssh_command=$(git -C "$dir" config core.sshCommand) || ssh_command=ssh
+  GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="$ssh_command -o BatchMode=yes" \
     git -C "$dir" fetch -q --prune origin 2> /dev/null || touch "$unreachable/$(basename "$dir")" &
 done
 wait
@@ -103,21 +136,30 @@ for dir in "${mine[@]}"; do
   safe+=("$dir")
   printf '  %-30s %s\n' "$name" "${green}completely on GitHub${reset}"
   # files that git ignores are not on GitHub either and go with the repository
-  mapfile -t ignored < <(git -C "$dir" status --porcelain --ignored | sed -n 's/^!! //p' | grep -vE "$remade")
+  ignored=()
+  while IFS= read -r -d '' entry; do
+    [[ "$entry" == '!! '* ]] || continue
+    remade "$dir" "${entry#'!! '}" || ignored+=("${entry#'!! '}")
+  done < <(git -C "$dir" status --porcelain -z --ignored)
   if [ ${#ignored[@]} -gt 0 ]; then
-    more=""; [ ${#ignored[@]} -gt 3 ] && more=" and $(( ${#ignored[@]} - 3 )) more"
-    printf '  %-30s %s\n' "" "${yellow}not in git, deleted with it: ${ignored[*]:0:3}${more}${reset}"
+    more=""; [ ${#ignored[@]} -gt 10 ] && more=" and $(( ${#ignored[@]} - 10 )) more"
+    printf '  %-30s %s\n' "" "${yellow}not in git, deleted with it: ${ignored[*]:0:10}${more}${reset}"
   fi
 done
+local_only=0
 for dir in "${others[@]}"; do
   url=$(git -C "$dir" config --get remote.origin.url)
   if [ -z "$url" ]; then
+    local_only=$((local_only + 1))
     printf '  %-30s %s\n' "$(basename "$dir")" "${red}only on this computer (no remote), left alone${reset}"
   else
     # git@github.com:owner/name.git or https://github.com/owner/name.git -> github.com/owner
     owner=$(sed -E 's#^[a-z+]+://##; s#^[^@/]*@##; s#:#/#; s#/[^/]*$##' <<< "$url")
     printf '  %-30s %s\n' "$(basename "$dir")" "not yours ($owner), left alone"
   fi
+done
+for dir in "${links[@]}"; do
+  printf '  %-30s %s\n' "$(basename "$dir")" "${yellow}a link to $(short "$(readlink -f "$dir")"), left alone${reset}"
 done
 
 if [ $kept -gt 0 ]; then
@@ -152,7 +194,8 @@ if ! github_keys=$(curl -fsS --max-time 20 "https://github.com/$user.keys"); the
 else
   personal=(); other=()
   for pub in "$HOME"/.ssh/*.pub; do
-    [ -f "$pub" ] || continue
+    # a .pub without its private key is not this computer's key (a copy from another one)
+    [ -f "$pub" ] && [ -f "${pub%.pub}" ] || continue
     read -r _ material _ < "$pub"
     if [ -n "$material" ] && awk '{print $2}' <<< "$github_keys" | grep -qxF -- "$material"; then
       personal+=("${pub%.pub}")
@@ -259,5 +302,5 @@ if [ ${#accounts[@]} -gt 0 ]; then
 fi
 echo "  - Sign out of GitHub and your other accounts in the browsers, and delete saved passwords"
 echo "  - Your own files outside $(short "$root"), such as in Desktop, Documents and Downloads"
-[ $kept -gt 0 ] && exit 1
+[ $kept -gt 0 ] || [ $local_only -gt 0 ] && exit 1
 exit 0

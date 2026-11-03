@@ -21,7 +21,8 @@ while [ $# -gt 0 ]; do
     -h|--help) sed -n '2,/^$/{s/^# \{0,1\}//;p}' "$0"; exit 0 ;;
     -*)        echo "Unknown option: $1 (see --help)"; exit 1 ;;
     *)
-      if [ $root_given -eq 0 ] && [ -d "${1/#\~/$HOME}" ]; then
+      # a path is the folder (a repository's name may also be a folder here)
+      if [ $root_given -eq 0 ] && [[ "$1" == */* || "$1" == '~' || "$1" == . || "$1" == .. ]]; then
         root="${1/#\~/$HOME}"; root_given=1
       else
         only+=("$1")
@@ -29,7 +30,7 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
-if ! min=$(numfmt --from=iec "${size^^}" 2> /dev/null) || [ "$min" -lt 1 ]; then
+if ! min=$(LC_ALL=C numfmt --from=iec "${size^^}" 2> /dev/null) || [ "$min" -lt 1 ]; then
   echo "--size takes a size such as 20M or 50M, not: $size"; exit 1
 fi
 
@@ -202,8 +203,9 @@ for dir in "$root"/*/; do
   # keeps them); git lfs says how much it would free
   prune_note=""
   if [ $history -eq 1 ] && [ -d "$dir/.git/lfs" ] && command -v git-lfs > /dev/null; then
+    # git-lfs before 3.5 starts the line with "prune: "
     read -r count freed < <(git -C "$dir" lfs prune --dry-run 2>&1 |
-      sed -n 's/^prune: \([0-9]*\) files\{0,1\} would be pruned (\(.*\)), done\.$/\1 \2/p' | tail -n 1)
+      sed -nE 's/^(prune: )?([0-9]+) files? would be pruned \((.*)\), done\.$/\2 \3/p' | tail -n 1)
     [ "${count:-0}" -gt 0 ] && prune_note="git lfs prune would free $freed: the local copies of $count old LFS versions (GitHub keeps them)"
   fi
 

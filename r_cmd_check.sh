@@ -3,9 +3,10 @@
 # after the other, and reports which packages have errors, warnings or notes,
 # and which checks gave them. The repositories are not changed: each package is
 # built and checked in ~/.cache/r_cmd_check_all, where the logs stay until the next run.
-#   r_cmd_check_all.sh [folder] [package ...]   every package, or only the ones named
-#   r_cmd_check_all.sh --as-cran                as CRAN checks a submission
-#   r_cmd_check_all.sh --manual                 also the PDF manual (needs LaTeX)
+#   r_cmd_check.sh [folder] [package ...]   every package, or only the ones named
+#   r_cmd_check.sh --as-cran                as CRAN checks a submission
+#   r_cmd_check.sh --manual                 also the PDF manual (needs LaTeX)
+# The folder is given as a path (~/GitHub, ., ../work): a plain word is a package.
 # A package is a folder with a DESCRIPTION: a repository, or a folder in one
 # (rwf/rwf). Suggested packages that are not installed do not stop a check, and
 # the tests skipped on CRAN run, unless --as-cran (r_install_packages.sh
@@ -19,7 +20,8 @@ for arg in "$@"; do
     -h|--help) sed -n '2,/^$/{s/^# \{0,1\}//;p}' "$0"; exit 0 ;;
     -*)        echo "Unknown option: $arg (see --help)"; exit 1 ;;
     *)
-      if [ $root_given -eq 0 ] && [ -d "${arg/#\~/$HOME}" ]; then
+      # a path is the folder (a package's name may also be a folder here)
+      if [ $root_given -eq 0 ] && [[ "$arg" == */* || "$arg" == '~' || "$arg" == . || "$arg" == .. ]]; then
         root="${arg/#\~/$HOME}"; root_given=1
       else
         only+=("$arg")
@@ -78,8 +80,10 @@ declare -A folder_of=()
 duplicates=()
 while IFS= read -r description; do
   dir=$(dirname "$description")
-  name=$(awk -F': *' '$1 == "Package" { print $2; exit }' "$description")
-  [ -n "$name" ] || continue
+  # without the \r of a DESCRIPTION saved on Windows; a name R would not take is skipped,
+  # as it names the folder that each check deletes and makes anew
+  name=$(awk -F': *' '$1 == "Package" { sub(/[ \t\r]+$/, "", $2); print $2; exit }' "$description")
+  [[ "$name" =~ ^[A-Za-z][A-Za-z0-9.]*$ ]] || continue
   if [ -z "${folder_of[$name]:-}" ]; then
     folder_of[$name]=$dir
   elif [ "$(basename "$dir")" = "$name" ]; then
@@ -167,7 +171,7 @@ for name in "${names[@]}"; do
   mkdir -p "$work"
   echo
   separator
-  version=$(awk -F': *' '$1 == "Version" { print $2; exit }' "$dir/DESCRIPTION")
+  version=$(awk -F': *' '$1 == "Version" { sub(/[ \t\r]+$/, "", $2); print $2; exit }' "$dir/DESCRIPTION")
   echo "${bold}$name $version${reset}  (${dir#"$root"/})"
   start=$SECONDS
 
