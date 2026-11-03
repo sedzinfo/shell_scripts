@@ -268,7 +268,7 @@ try {
   if ($refused_repos.Count -gt 0) { Write-Host "GitHub would refuse: $($refused_repos -join ' ')" -ForegroundColor Red }
   if ($warned_repos.Count -gt 0) { Write-Host "Files over $(Format-Size $min) without LFS: $($warned_repos -join ' ')" -ForegroundColor Yellow }
   if ($pointer_repos.Count -gt 0) { Write-Host "LFS files not downloaded: $($pointer_repos -join ' ')" }
-  Write-Host "No large files in $clean of $($repositories.Count) repositories" -ForegroundColor Green
+  if ($clean -gt 0) { Write-Host "No large files in $clean of $($repositories.Count) repositories" -ForegroundColor Green }
 } finally {
   try { [Console]::OutputEncoding = $encoding } catch { }
 }

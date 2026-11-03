@@ -244,5 +244,5 @@ separator
 [ ${#refused_repos[@]} -gt 0 ] && echo "${red}GitHub would refuse: ${refused_repos[*]}${reset}"
 [ ${#warned_repos[@]} -gt 0 ] && echo "${yellow}Files over $(mb "$min") without LFS: ${warned_repos[*]}${reset}"
 [ ${#pointer_repos[@]} -gt 0 ] && echo "LFS files not downloaded: ${pointer_repos[*]}"
-echo "${green}No large files in $clean of $checked repositories${reset}"
+[ "$clean" -gt 0 ] && echo "${green}No large files in $clean of $checked repositories${reset}"
 [ ${#refused_repos[@]} -eq 0 ]
