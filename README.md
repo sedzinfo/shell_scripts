@@ -3,8 +3,8 @@
 Small bash scripts: looking after many git repositories at once, and keeping an eye on the machine.
 The git scripts work on `~/GitHub` by default; if that folder does not exist, they ask for one
 (Tab completes paths, `~` works, an empty answer quits). Each one except `hwrt_pi.sh`,
-`machine_new.sh`, `tmux_update_plugins.sh` and `ssh_setup_keys.sh` also comes as a
-PowerShell script for Windows (`.ps1`); see [Windows](#windows).
+`machine_new.sh`, `tmux_update_plugins.sh`, `ssh_setup_keys.sh` and `ssh_run_all.sh` also
+comes as a PowerShell script for Windows (`.ps1`); see [Windows](#windows).
 
 When a program a script needs is missing (`lm-sensors`, `alsa-utils`, `pciutils`,
 `curl`, `jq`, `fio`), the script says what it is for and asks before installing it with
@@ -33,6 +33,7 @@ NVIDIA's are never offered.
 | [`machine_leave.sh`](machine_leave.sh) | Before handing back a computer: checks that everything is on GitHub, then removes your repositories, GitHub key and logins | Yes, asks before each step |
 | [`tmux_update_plugins.sh`](tmux_update_plugins.sh) | Updates the tmux plugins (TPM) and repairs what copying their folder broke | Only the plugins; never your tmux configuration |
 | [`ssh_setup_keys.sh`](ssh_setup_keys.sh) | Sets up passwordless SSH logins to every machine of a list | Adds your public key on the machines that need it; asks before creating a key |
+| [`ssh_run_all.sh`](ssh_run_all.sh) | Runs a command on every machine of the same list, one after the other or all at once | Whatever the command does; asks before running it |
 
 ## git_status_all.sh
 
@@ -659,6 +660,43 @@ A key with a passphrase is added to ssh-agent first (`ssh-add` asks for the
 passphrase once), as otherwise every login would ask for it. The exit code is 1 if
 a machine still asks for a password or cannot be reached.
 
+## ssh_run_all.sh
+
+```bash
+ssh_run_all.sh 'sudo apt update && sudo apt full-upgrade -y'   # update every machine
+ssh_run_all.sh 'df -h /'                                       # free space everywhere
+ssh_run_all.sh --parallel uptime                               # all at the same time
+ssh_run_all.sh --list ~/servers.txt --yes 'sudo reboot'        # another list, without asking
+```
+
+Runs a command on every machine of `~/.ssh/machines.txt`, the list of
+[`ssh_setup_keys.sh`](#ssh_setup_keyssh) (the same format; a machine listed twice
+runs once). The options come before the command; quotes are needed only around a
+command with `&&`, `;`, `|` or `$`. It shows the command and the machines and asks
+before running it, as a mistyped command would reach every machine at once
+(`--yes` runs without asking, also where there is no terminal, such as cron).
+
+By default the machines run one after the other, each in a terminal of its own, so
+the command can ask you things: the password of `sudo`, or apt asking about a
+changed configuration file. With `--parallel` all machines run at the same time,
+which is quicker for long updates, but nothing can be asked: a `sudo` that needs a
+password fails with "a terminal is required", instead of waiting forever. What each
+machine printed is shown under its name, followed by the result:
+
+```text
+demo@192.168.1.10:22
+hello from pi4
+  done in 0s
+pwonly@192.168.1.11:22
+pwonly@192.168.1.11: Permission denied (publickey,password).
+  asks for a password: skipped (ssh_setup_keys.sh sets up the key)
+```
+
+The logins must not ask for a password (that is what `ssh_setup_keys.sh` sets up); a
+machine that asks is skipped. What each machine printed stays in
+`~/.cache/ssh_run_all/<user@host:port>.log` until the next run. The exit code is 1 if
+the command failed on a machine or a machine could not be reached.
+
 ## Windows
 
 The `.ps1` scripts do the same as the bash ones, with the same arguments and questions, in
@@ -715,6 +753,7 @@ What is different on Windows:
 - `machine_new.sh` has no Windows version: it sets up Linux Mint.
 - `tmux_update_plugins.sh` has no Windows version: tmux runs on Linux and macOS (and in WSL).
 - `ssh_setup_keys.sh` has no Windows version yet: Windows has `ssh`, but not `ssh-copy-id`.
+- `ssh_run_all.sh` has no Windows version yet; it goes with `ssh_setup_keys.sh`.
 
 ## New computer
 

@@ -121,7 +121,8 @@ run_on() {
   local index=$1 tty=(-T)
   parse_line "${lines[$index]}"
   [ $parallel -eq 0 ] && [ -t 0 ] && tty=(-t)
-  ssh "${tty[@]}" -o BatchMode=yes -o ConnectTimeout=10 "${login_args[@]}" "$destination" "$command"
+  # LogLevel=ERROR: without "Connection to ... closed." after each machine
+  ssh "${tty[@]}" -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR "${login_args[@]}" "$destination" "$command"
 }
 
 # file name of a machine's log
