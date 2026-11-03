@@ -60,8 +60,10 @@ read -r -d '' analysis <<'EOF'
 args <- commandArgs(trailingOnly = TRUE)
 package <- args[1]; mode <- args[2]
 record_name <- "r_article_caches.txt"
+# an argument for git, quoted as the system starts programs (Windows has no ' quotes)
+q <- function(x) shQuote(x, type = if (.Platform$OS.type == "windows") "cmd" else "sh")
 git_ok <- nzchar(Sys.which("git")) &&
-  system2("git", c("-C", shQuote(package), "rev-parse", "--is-inside-work-tree"), stdout = FALSE, stderr = FALSE) == 0
+  system2("git", c("-C", q(package), "rev-parse", "--is-inside-work-tree"), stdout = FALSE, stderr = FALSE) == 0
 
 # code with the same meaning written the same way: = as <-, and no braces around a single
 # expression (if (x) { y } is if (x) y)
@@ -121,15 +123,15 @@ closure <- function(roots) {
 
 # the functions of an R file as they were in a commit (from git); NULL when git does not
 # know the file or the commit
-git <- function(folder, ...) suppressWarnings(system2("git", c("-C", shQuote(folder), ...), stdout = TRUE, stderr = FALSE))
+git <- function(folder, ...) suppressWarnings(system2("git", c("-C", q(folder), ...), stdout = TRUE, stderr = FALSE))
 versions <- new.env()
 functions_in <- function(file, commit) {
   key <- paste(commit, file)
   if (exists(key, envir = versions, inherits = FALSE)) return(get(key, envir = versions))
-  path <- git(dirname(file), "ls-files", "--full-name", "--", shQuote(basename(file)))
+  path <- git(dirname(file), "ls-files", "--full-name", "--", q(basename(file)))
   found <- NULL
   if (length(path) && length(commit) && nzchar(commit)) {
-    text <- git(dirname(file), "show", shQuote(paste0(commit, ":", path[1])))
+    text <- git(dirname(file), "show", q(paste0(commit, ":", path[1])))
     found <- if (is.null(attr(text, "status"))) read_functions(text) else list()
   }
   assign(key, found, envir = versions)
@@ -171,11 +173,8 @@ for (article in articles) {
   cache <- file.path(dirname(article), paste0(tools::file_path_sans_ext(basename(article)), "_cache"))
   results <- list.files(cache, pattern = "\\.rdb$", recursive = TRUE, full.names = TRUE)
   relative <- substring(article, nchar(package) + 2)
-  if (!length(results)) {
-    # deleted by --clean, and not built since
-    if (file.exists(file.path(cache, record_name))) cat("empty", relative, "", 0, "", sep = "\t", fill = TRUE)
-    next
-  }
+  record <- file.path(cache, record_name)
+  if (!length(results) && !file.exists(record)) next   # not cached
   # the R code of its chunks, and the functions of the package that code names
   lines <- readLines(article, warn = FALSE); code <- character(); inside <- FALSE
   for (line in lines) {
@@ -185,9 +184,15 @@ for (article in articles) {
   }
   words <- unique(unlist(regmatches(code, gregexpr("[A-Za-z.][A-Za-z0-9._]*", code))))
   uses <- closure(intersect(words, known))
+  if (!length(results)) {
+    # deleted by --clean and not built since: the next build uses the code as it is now,
+    # so that is what --clean and --accept record
+    if (mode %in% c("clean", "accept")) write_record(cache, uses)
+    cat("empty", relative, "", 0, "", sep = "\t", fill = TRUE)
+    next
+  }
   written <- file.mtime(results)
   cached_at <- min(written)
-  record <- file.path(cache, record_name)
   if (file.exists(record)) {
     old <- tryCatch(read.delim(record, header = FALSE, col.names = c("name", "hash"), colClasses = "character", quote = ""),
                     error = function(e) data.frame(name = character(), hash = character()))
@@ -280,8 +285,10 @@ done
 
 echo
 separator
-[ $cleaned -gt 0 ] && echo "${green}Deleted $cleaned caches; their articles are touched, so pkgdown::build_site(lazy = TRUE) rebuilds them${reset}"
-[ $stale_left -gt 0 ] && echo "${yellow}$stale_left stale caches: r_article_caches.sh --clean deletes them${reset}"
+[ $cleaned -eq 1 ] && caches="1 cache" || caches="$cleaned caches"
+[ $cleaned -gt 0 ] && echo "${green}Deleted $caches; their articles are touched, so pkgdown::build_site(lazy = TRUE) rebuilds them${reset}"
+[ $stale_left -eq 1 ] && stale="1 stale cache" || stale="$stale_left stale caches"
+[ $stale_left -gt 0 ] && echo "${yellow}$stale: r_article_caches.sh --clean deletes them${reset}"
 [ ${#failed[@]} -gt 0 ] && echo "${red}Could not be read: ${failed[*]}${reset}"
 [ $stale_left -eq 0 ] && [ $cleaned -eq 0 ] && [ ${#failed[@]} -eq 0 ] && echo "${green}No stale caches${reset}"
 [ $stale_left -eq 0 ] && [ ${#failed[@]} -eq 0 ]

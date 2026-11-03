@@ -756,7 +756,7 @@ What is different on Windows:
   but takes a path pasted with *Copy as path* (quotes and all).
 - Switches are written the PowerShell way: `-NoFetch`, `-Check`, `-DryRun`, `-Strict`,
   `-AsCran`, `-Manual`, `-NoExamples`, `-To`, `-List`, `-Size`, `-History`, `-Yes`, `-Time`, `-ReadOnly`,
-  `-Key`, `-Parallel`, and
+  `-Key`, `-Parallel`, `-Clean`, `-Accept`, and
   `-Root` for `r_shiny_update_manifests.ps1` (or `$env:ROOT`).
 - The logs and working copies that the bash scripts keep in `~/.cache` go to
   `%LOCALAPPDATA%` (e.g. `%LOCALAPPDATA%\r_cmd_check_all`).
