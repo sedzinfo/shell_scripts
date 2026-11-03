@@ -18,6 +18,7 @@ NVIDIA's are never offered.
 | [`git_clone_all.sh`](git_clone_all.sh) | Clones every repository of a GitHub user that is not downloaded yet | Only adds new folders |
 | [`git_push_checked.sh`](git_push_checked.sh) | Pushes what is not on GitHub yet, once R CMD check passes for each R package it changes | Pushes what passes; commits nothing |
 | [`git_large_files_all.sh`](git_large_files_all.sh) | Finds files that GitHub would refuse (over 100 MB) or warn about (over 50 MB), files that should be in Git LFS, and LFS files never downloaded | No |
+| [`git_lfs_prune_all.sh`](git_lfs_prune_all.sh) | Frees the space of the local copies of old Git LFS versions (`git lfs prune`), which GitHub keeps | Deletes them, after asking |
 | [`hwrt.sh`](hwrt.sh) | Live view of RAM, CPU speed, GPU, temperatures and fans; beeps when RAM is low | No |
 | [`hwrt_pi.sh`](hwrt_pi.sh) | The same for a Raspberry Pi, plus the power supply (under-voltage, throttling) | No |
 | [`disk_speed.sh`](disk_speed.sh) | Read and write speed of every drive, on a PC or a Raspberry Pi | Only a temporary test file, deleted at the end |
@@ -173,6 +174,42 @@ golemworldbank  (main)
 ```
 
 Nothing is changed; the exit code is 1 if GitHub would refuse a push.
+[`git_lfs_prune_all.sh`](#git_lfs_prune_allsh) frees the space of the LFS copies.
+
+## git_lfs_prune_all.sh
+
+```bash
+git_lfs_prune_all.sh                  # every repository in ~/GitHub
+git_lfs_prune_all.sh rwf worldbank    # only these
+git_lfs_prune_all.sh --dry-run        # only shows what would be freed
+git_lfs_prune_all.sh --yes            # prunes without asking
+```
+
+Git LFS keeps in `.git/lfs` a copy of every version of an LFS file it ever
+downloaded, so a file that changed often can take more space there than all the
+commits. Only old commits need the old versions: GitHub keeps every one, and
+`git lfs` downloads one again when a checkout needs it. This shows how much
+`git lfs prune` would free in each repository, and deletes nothing until you
+answer yes:
+
+```text
+  rscripts_repo               652 MB of    940 MB  (267 old versions)
+  rwf                         126 MB of    138 MB  (1434 old versions)
+  nothing to free in 21 other repositories
+
+Total: 778 MB
+Delete them? Git asks origin first that it has them [y/N]:
+```
+
+It keeps what `git lfs prune` keeps: the files of the current checkout, the
+stashes, the other worktrees, the branches with a commit in the last 10 days,
+and the commits not pushed yet. Before deleting, git asks origin whether it has
+the versions that commits still use (`--verify-remote`); if one is missing there,
+nothing of that repository is deleted. Versions that only the reflog still knows
+(from before a `git commit --amend` or a rebase) are deleted too. A repository
+without an `origin` keeps everything, and one with its own LFS storage
+(`lfs.storage`), which others may share, is skipped. The exit code is 1 if a
+repository could not be pruned.
 
 ## hwrt.sh
 
@@ -524,7 +561,7 @@ What is different on Windows:
   `~\GitHub` if that does not exist. The folder question does not complete paths with Tab,
   but takes a path pasted with *Copy as path* (quotes and all).
 - Switches are written the PowerShell way: `-NoFetch`, `-Check`, `-DryRun`, `-Strict`,
-  `-AsCran`, `-Manual`, `-NoExamples`, `-To`, `-List`, `-Size`, `-Time`, `-ReadOnly`, and
+  `-AsCran`, `-Manual`, `-NoExamples`, `-To`, `-List`, `-Size`, `-History`, `-Yes`, `-Time`, `-ReadOnly`, and
   `-Root` for `r_shiny_update_manifests.ps1` (or `$env:ROOT`).
 - The logs and working copies that the bash scripts keep in `~/.cache` go to
   `%LOCALAPPDATA%` (e.g. `%LOCALAPPDATA%\r_cmd_check_all`).
