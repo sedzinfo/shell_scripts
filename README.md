@@ -3,8 +3,8 @@
 Small bash scripts: looking after many git repositories at once, and keeping an eye on the machine.
 The git scripts work on `~/GitHub` by default; if that folder does not exist, they ask for one
 (Tab completes paths, `~` works, an empty answer quits). Each one except `hwrt_pi.sh`,
-`machine_new.sh` and `tmux_update_plugins.sh` also comes as a PowerShell script for Windows
-(`.ps1`); see [Windows](#windows).
+`machine_new.sh`, `tmux_update_plugins.sh` and `ssh_setup_keys.sh` also comes as a
+PowerShell script for Windows (`.ps1`); see [Windows](#windows).
 
 When a program a script needs is missing (`lm-sensors`, `alsa-utils`, `pciutils`,
 `curl`, `jq`, `fio`), the script says what it is for and asks before installing it with
@@ -32,6 +32,7 @@ NVIDIA's are never offered.
 | [`machine_new.sh`](machine_new.sh) | Sets up a new computer with Linux Mint with the programs of the old one | Installs, asks before each step |
 | [`machine_leave.sh`](machine_leave.sh) | Before handing back a computer: checks that everything is on GitHub, then removes your repositories, GitHub key and logins | Yes, asks before each step |
 | [`tmux_update_plugins.sh`](tmux_update_plugins.sh) | Updates the tmux plugins (TPM) and repairs what copying their folder broke | Only the plugins; never your tmux configuration |
+| [`ssh_setup_keys.sh`](ssh_setup_keys.sh) | Sets up passwordless SSH logins to every machine of a list | Adds your public key on the machines that need it; asks before creating a key |
 
 ## git_status_all.sh
 
@@ -577,6 +578,72 @@ the plugins of your configuration that are not installed. In a running tmux,
 `tmux source-file ~/.tmux.conf` loads the updated plugins. The exit code is 1 if a
 plugin could not be updated or a script of it cannot run.
 
+## ssh_setup_keys.sh
+
+```bash
+ssh_setup_keys.sh                        # the machines in ~/.ssh/machines.txt
+ssh_setup_keys.sh ~/servers.txt          # or in another file
+ssh_setup_keys.sh --key ~/.ssh/id_rsa    # copies this key instead of the first one found
+ssh_setup_keys.sh --check                # only checks which machines need no password
+```
+
+Sets up passwordless SSH logins, with your key instead of a password, to every
+machine of a list.
+
+**The list** is `~/.ssh/machines.txt`, or the file you give. It is not a standard
+file and nothing creates it: make it yourself with any text editor
+(`nano ~/.ssh/machines.txt`, `xed`, `code`), and write one machine per line, as you
+would type it:
+
+```text
+# Raspberry Pis
+ssh dimitrios@192.168.1.10
+ssh dimitrios@myhost.example.com -p 5000
+ssh -L 8080:192.168.1.1:80 dimitrios@myhost.example.com -p 1515
+pi@raspberrypi.local
+```
+
+Empty lines and lines starting with `#` are skipped. ssh reads each line itself
+(`ssh -G`), so your `~/.ssh/config` applies; a forward such as `-L` is not needed
+for the key and is left out, and a second line for the same machine is skipped.
+The port is `-p` (lowercase): with `-P 5000` (the port option of `scp`) ssh uses
+port 22, and the script says so. To add a machine later, add its line and run the
+script again: the machines that already work are left as they are.
+
+With the machine in `~/.ssh/config`, the standard file of ssh, a line can be as
+short as `ssh pip0`, and the same name works in `scp`, `rsync`, git and VS Code:
+
+```text
+Host pip0
+    HostName myhost.example.com
+    User dimitrios
+    Port 5000
+```
+
+The list has no secrets: copy it (and `~/.ssh/config`) to your other computers,
+but keep it out of public repositories such as this one, as it has your servers'
+addresses. Run the script on each computer: each one has its own key, so a lost
+laptop's key can be removed from the machines without affecting the others.
+Never copy a private key between computers.
+
+It uses the key you already have (`~/.ssh/id_ed25519`, `id_ecdsa` or `id_rsa`, in
+that order), and creates one only when there is none, after asking; a key is never
+replaced. For each machine it first tries to log in without a password, and leaves
+the machine alone if that works. Otherwise `ssh-copy-id` copies your public key: it
+asks for the machine's password once, adds the key only if it is not there yet (so
+running the script again adds nothing twice), and gives `~/.ssh` there the
+permissions sshd requires. Then it checks that the login works without a password:
+
+```text
+dimitrios@myhost.example.com:5000  (ssh dimitrios@myhost.example.com -p 5000)
+  copying your key: ssh-copy-id asks for the password of dimitrios@myhost.example.com:5000 once
+  logs in without a password now
+```
+
+A key with a passphrase is added to ssh-agent first (`ssh-add` asks for the
+passphrase once), as otherwise every login would ask for it. The exit code is 1 if
+a machine still asks for a password or cannot be reached.
+
 ## Windows
 
 The `.ps1` scripts do the same as the bash ones, with the same arguments and questions, in
@@ -632,6 +699,7 @@ What is different on Windows:
 - `hwrt_pi.sh` has no Windows version: it reads what only a Raspberry Pi has.
 - `machine_new.sh` has no Windows version: it sets up Linux Mint.
 - `tmux_update_plugins.sh` has no Windows version: tmux runs on Linux and macOS (and in WSL).
+- `ssh_setup_keys.sh` has no Windows version yet: Windows has `ssh`, but not `ssh-copy-id`.
 
 ## New computer
 
