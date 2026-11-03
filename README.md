@@ -558,20 +558,24 @@ are unchanged, byte for byte. First it repairs what copying the plugin folder
 (from a backup, a USB stick or another computer) breaks: files that lost their
 executable bit, so that tmux cannot run the plugin (`run '~/.tmux/plugins/tpm/tpm'`
 then fails with "Permission denied" and no plugin loads), symlinks turned into plain
-files, missing submodules, and files and folders anyone could write to. It tells
-these apart from edits of your own: a plugin you changed is left as it is. Then it
-updates each plugin from GitHub, only forward, so commits of your own are never lost:
+files, missing submodules, and files and folders anyone could write to (also the
+plugins folder and `~/.tmux`: whoever can write there can swap a plugin for their
+own). It tells these apart from edits of your own: a plugin you changed is left as
+it is. Then it updates each plugin from GitHub, only forward, so commits of your own
+are never lost, and checks that every script of the plugin can run: the files git
+marks executable, also in its submodules, and the `*.tmux` files TPM runs:
 
 ```text
 tmux-resurrect  (git@github.com:tmux-plugins/tmux-resurrect.git)
-  repaired: 9 file permissions, 3 symlinks, submodules, 196 files and folders anyone could write to
+  repaired: 26 file permissions, 168 files and folders anyone could write to
   updated a2ddfb9 -> cff343c, 6 new commits
+  can run: all 25 scripts
 ```
 
 It also says when apt has a newer tmux and asks before installing it, and lists
 the plugins of your configuration that are not installed. In a running tmux,
 `tmux source-file ~/.tmux.conf` loads the updated plugins. The exit code is 1 if a
-plugin could not be updated.
+plugin could not be updated or a script of it cannot run.
 
 ## Windows
 
