@@ -593,15 +593,30 @@ machine of a list.
 **The list** is `~/.ssh/machines.txt`, or the file you give. It is not a standard
 file and nothing creates it: make it yourself with any text editor
 (`nano ~/.ssh/machines.txt`, `xed`, `code`), and write one machine per line, as you
-would type it:
+would type it. A complete example:
 
 ```text
-# Raspberry Pis
+# ~/.ssh/machines.txt: the machines ssh_setup_keys.sh sets up, one per line.
+# Lines starting with # and empty lines are skipped.
+
+# at home, by address or by name
 ssh dimitrios@192.168.1.10
+ssh pi@raspberrypi.local
+dimitrios@192.168.1.11
+
+# from outside, through the router: the port with -p (lowercase, not -P)
 ssh dimitrios@myhost.example.com -p 5000
-ssh -L 8080:192.168.1.1:80 dimitrios@myhost.example.com -p 1515
-pi@raspberrypi.local
+ssh dimitrios@myhost.example.com -p 1515
+
+# a line copied from your notes, with a forward: the -L part is left out
+ssh -L 8080:192.168.1.1:80 dimitrios@myhost.example.com -p 1500
+
+# a machine with a Host entry in ~/.ssh/config (see below)
+ssh pip0
 ```
+
+Write `ssh` at the start or not, as you like, and use your own user names,
+addresses and ports.
 
 Empty lines and lines starting with `#` are skipped. ssh reads each line itself
 (`ssh -G`), so your `~/.ssh/config` applies; a forward such as `-L` is not needed
