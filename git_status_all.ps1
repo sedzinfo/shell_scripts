@@ -21,6 +21,22 @@ while (-not (Test-Path -LiteralPath $Folder -PathType Container)) {
   $Folder = $Folder.Trim().Trim('"') -replace '^~', $HOME
 }
 
+# installs a missing program with winget, without asking (its installer may ask for
+# administrator approval). A new program is on the PATH of new windows only: this one gets
+# it too. Nothing happens where winget is missing
+function Install-Program([string]$package) {
+  if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { return }
+  Write-Host "Installing $package with winget ..."
+  winget install --id $package --exact --source winget --silent --accept-package-agreements --accept-source-agreements
+  $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+}
+
+# git is needed, so without it it stops
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) { Install-Program 'Git.Git' }
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+  Write-Host 'git is needed: winget install Git.Git'; exit 1
+}
+
 $attention = 0
 
 foreach ($dir in Get-ChildItem -LiteralPath $Folder -Directory) {
