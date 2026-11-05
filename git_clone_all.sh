@@ -2,8 +2,10 @@
 # Clones every repository of a GitHub user into ~/GitHub (or the folder given).
 # Repositories that are already there are skipped, so it is safe to run again.
 #   git_clone_all.sh [folder] [user]
-# Private repositories are included only if a token of that user is set:
+# Private repositories are included only with a token of that user:
 #   GITHUB_TOKEN=ghp_... git_clone_all.sh
+# Without GITHUB_TOKEN, the token of the GitHub CLI (gh auth token) is used when
+# it is logged in; with no token at all it says that only public ones are listed.
 # Needs curl and jq.
 
 case "${1:-}" in
@@ -54,11 +56,21 @@ command -v curl > /dev/null && command -v jq > /dev/null || exit 1
 # private; otherwise public only (a token of someone else still raises the limit
 # of requests)
 url="https://api.github.com/users/$user/repos?type=owner"; auth=()
-if [ -n "$GITHUB_TOKEN" ]; then
-  auth=(-H "Authorization: Bearer $GITHUB_TOKEN")
+token="${GITHUB_TOKEN:-}"
+if [ -z "$token" ] && command -v gh > /dev/null; then
+  token=$(gh auth token 2> /dev/null)
+fi
+scope="public only: no token (GITHUB_TOKEN=ghp_... or gh auth login for private ones)"
+if [ -n "$token" ]; then
+  auth=(-H "Authorization: Bearer $token")
   owner=$(curl -fsS "${auth[@]}" https://api.github.com/user | jq -r .login) ||
     { echo "GitHub did not accept the token"; exit 1; }
-  [ "${owner,,}" = "${user,,}" ] && url="https://api.github.com/user/repos?affiliation=owner"
+  if [ "${owner,,}" = "${user,,}" ]; then
+    url="https://api.github.com/user/repos?affiliation=owner"
+    scope="public and private"
+  else
+    scope="public only: the token is $owner's, not $user's"
+  fi
 fi
 
 repos=()
@@ -70,7 +82,7 @@ while :; do
   repos+=("${batch[@]}")
   page=$((page + 1))
 done
-echo "Found ${#repos[@]} repositories of $user"
+echo "Found ${#repos[@]} repositories of $user ($scope)"
 echo
 
 cloned=(); skipped=(); failed=()

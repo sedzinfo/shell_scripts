@@ -25,6 +25,7 @@ NVIDIA's are never offered.
 | [`git_pull_all.sh`](git_pull_all.sh) | Pulls every repository | Yes, asks before anything destructive |
 | [`git_clone_all.sh`](git_clone_all.sh) | Clones every repository of a GitHub user that is not downloaded yet | Only adds new folders |
 | [`git_push_checked.sh`](git_push_checked.sh) | Pushes what is not on GitHub yet, once R CMD check passes for each R package it changes | Pushes what passes, after asking; commits nothing |
+| [`git_actions_all.sh`](git_actions_all.sh) | The latest GitHub Actions run of every workflow of every repository, problems first, and which repositories have a problem | No |
 | [`git_large_files_all.sh`](git_large_files_all.sh) | Finds files that GitHub would refuse (over 100 MB) or warn about (over 50 MB), files that should be in Git LFS, and LFS files never downloaded | No |
 | [`git_lfs_prune_all.sh`](git_lfs_prune_all.sh) | Frees the space of the local copies of old Git LFS versions (`git lfs prune`), which GitHub keeps | Deletes them, after asking |
 | [`hwrt.sh`](hwrt.sh) | Live view of RAM, CPU speed, GPU, temperatures and fans; beeps when RAM is low | No |
@@ -111,6 +112,42 @@ GITHUB_TOKEN=ghp_... git_clone_all.sh
 ```
 
 Needs `curl` and `jq`.
+
+## git_actions_all.sh
+
+```bash
+git_actions_all.sh [owner ...] [--problems]
+```
+
+Asks GitHub for the repositories of each `owner`, a user or an organisation
+(default `sedzinfo`; archived ones are left out), and shows the latest run of
+each of their workflows, one line each, with its result, branch, date and link:
+
+- **failure**, **cancelled**, **timed_out**, ...: first, these are the problems
+- **in_progress**, **queued**: still running
+- **success** (or skipped): last
+
+At the end it lists the repositories with a problem, and how many have no
+Actions at all; the exit code is 1 if any repository has a problem, so it can
+run from cron. `--problems` leaves out the lines that passed. Only the latest
+run of a workflow counts: a failure that a later run fixed is not shown.
+
+```bash
+git_actions_all.sh sedzinfo evalioncode   # your repositories and an organisation's
+git_actions_all.sh --problems             # only what failed or is still running
+```
+
+Without a token only public repositories are listed, and GitHub allows 60
+requests an hour, one per repository. With the GitHub CLI logged in
+(`gh auth login`) its token is used by itself; otherwise pass one for that run
+(classic, `repo` scope, from <https://github.com/settings/tokens>; for the
+private repositories of an organisation, the token of a member):
+
+```bash
+GITHUB_TOKEN=ghp_... git_actions_all.sh sedzinfo evalioncode
+```
+
+It never changes anything. Needs `curl` and `jq`.
 
 ## git_push_checked.sh
 

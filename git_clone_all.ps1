@@ -64,15 +64,26 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) { exit 1 }
 # the list of repositories, 100 per page: with a token of that user, public and private;
 # otherwise public only (a token of someone else still raises the limit of requests)
 $url = "https://api.github.com/users/$User/repos?type=owner"; $headers = @{}
-if ($env:GITHUB_TOKEN) {
-  $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN" }
+# the token: GITHUB_TOKEN, else the GitHub CLI's when it is logged in
+$token = $env:GITHUB_TOKEN
+if (-not $token -and (Get-Command gh -ErrorAction SilentlyContinue)) {
+  $token = (gh auth token 2> $null)
+}
+$scope = 'public only: no token ($env:GITHUB_TOKEN or gh auth login for private ones)'
+if ($token) {
+  $headers = @{ Authorization = "Bearer $token" }
   try {
     $owner = (Invoke-RestMethod -Uri 'https://api.github.com/user' -Headers $headers -UseBasicParsing).login
   } catch {
     Write-Host 'GitHub did not accept the token'
     exit 1
   }
-  if ($owner -eq $User) { $url = 'https://api.github.com/user/repos?affiliation=owner' }
+  if ($owner -eq $User) {
+    $url = 'https://api.github.com/user/repos?affiliation=owner'
+    $scope = 'public and private'
+  } else {
+    $scope = "public only: the token is $owner's, not $User's"
+  }
 }
 
 $repos = @()
@@ -90,7 +101,7 @@ while ($true) {
   $repos += $batch
   $page++
 }
-Write-Host "Found $($repos.Count) repositories of $User"
+Write-Host "Found $($repos.Count) repositories of $User ($scope)"
 Write-Host ''
 
 $cloned = @(); $skipped = @(); $failed = @()
