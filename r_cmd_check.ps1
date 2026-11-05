@@ -17,12 +17,6 @@ param(
   [switch]$Manual
 )
 
-# anything but y/yes is no
-function Test-Yes([string]$question) {
-  $answer = Read-Host "$question [y/N]"
-  return $answer -match '^\s*y(es)?\s*$'
-}
-
 # installs a missing program with winget, without asking (its installer may ask for
 # administrator approval). A new program is on the PATH of new windows only: this one gets
 # it too. Nothing happens where winget is missing
