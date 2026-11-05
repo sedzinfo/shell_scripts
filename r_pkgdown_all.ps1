@@ -86,18 +86,16 @@ if ($missing.Count -gt 0) {
   Write-Host 'Missing:'
   foreach ($m in $missing) { Write-Host ('  {0,-14} {1,-26} package {2}' -f $m[0], "($($m[1]))", $m[2]) }
   $ids = $missing | ForEach-Object { $_[2] }
-  if ((Get-Command winget -ErrorAction SilentlyContinue) -and (Test-Yes "Install them now with winget install $($ids -join ' ')?")) {
-    foreach ($id in $ids) { winget install --id $id --exact --source winget }
-    if (-not $rscript) { $rscript = Find-Rscript }
-  } else {
+  foreach ($id in $ids) { Install-Program $id }
+  if (-not $rscript) { $rscript = Find-Rscript }
+  if (-not $rscript -or -not (Get-Command pandoc -ErrorAction SilentlyContinue)) {
     Write-Host "Install them with: winget install $($ids -join ' ')"
   }
 }
 if (-not $rscript) { exit 1 }
 & $rscript -e "quit(status = !requireNamespace('pkgdown', quietly = TRUE))" 2> $null
 if ($LASTEXITCODE -ne 0) {
-  Write-Host 'The R package pkgdown is not installed.'
-  if (-not (Test-Yes 'Install it now, into your R library?')) { exit 1 }
+  Write-Host 'The R package pkgdown is not installed; installing it into your R library ...'
   & $rscript -e "lib <- Sys.getenv('R_LIBS_USER'); dir.create(lib, recursive = TRUE, showWarnings = FALSE); install.packages('pkgdown', lib = lib, repos = 'https://cloud.r-project.org')"
   if ($LASTEXITCODE -ne 0) { exit 1 }
 }

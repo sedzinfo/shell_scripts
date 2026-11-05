@@ -91,14 +91,11 @@ if ($missing.Count -gt 0) {
   Write-Host 'Missing:'
   foreach ($m in $missing) { Write-Host ('  {0,-14} {1,-26} package {2}' -f $m[0], "($($m[1]))", $m[2]) }
   $ids = $missing | ForEach-Object { $_[2] }
-  if ((Get-Command winget -ErrorAction SilentlyContinue) -and (Test-Yes "Install them now with winget install $($ids -join ' ')?")) {
-    foreach ($id in $ids) { winget install --id $id --exact --source winget }
-    if (-not $rscript) { $rscript = Find-Rscript }
-    if ($ids -contains 'MiKTeX.MiKTeX') { Write-Host 'Open a new PowerShell window for LaTeX to be found, and run this again.' }
-  } else {
-    Write-Host "Install them with: winget install $($ids -join ' ')"
+  foreach ($id in $ids) { Install-Program $id }
+  if (-not $rscript) { $rscript = Find-Rscript }
+  if (-not $rscript -or -not (Get-Command pdflatex -ErrorAction SilentlyContinue)) {
+    Write-Host "Install them with: winget install $($ids -join ' ')"; exit 1
   }
-  if (-not $rscript -or -not (Get-Command pdflatex -ErrorAction SilentlyContinue)) { exit 1 }
 }
 # R CMD runs through R.exe, which sits next to Rscript.exe
 $r = Join-Path (Split-Path -Parent $rscript) 'R.exe'
@@ -106,7 +103,8 @@ if (-not (Test-Path -LiteralPath $r)) { $r = Join-Path (Split-Path -Parent $rscr
 # the font R's manuals use for code; MiKTeX can install it, TinyTeX has it
 if ((Get-Command kpsewhich -ErrorAction SilentlyContinue) -and -not (kpsewhich inconsolata.sty)) {
   Write-Host "The LaTeX font inconsolata, which R's manuals use for code, is missing."
-  if ((Get-Command miktex -ErrorAction SilentlyContinue) -and (Test-Yes 'Install it now with miktex packages install inconsolata?')) {
+  if (Get-Command miktex -ErrorAction SilentlyContinue) {
+    Write-Host 'Installing it with miktex packages install inconsolata ...'
     miktex packages install inconsolata
   }
 }

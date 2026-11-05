@@ -93,8 +93,7 @@ if (-not $rscript) {
 }
 & $rscript -e "quit(status = !requireNamespace('roxygen2', quietly = TRUE))" 2> $null
 if ($LASTEXITCODE -ne 0) {
-  Write-Host 'The R package roxygen2 is not installed.'
-  if (-not (Test-Yes 'Install it now, into your R library?')) { exit 1 }
+  Write-Host 'The R package roxygen2 is not installed; installing it into your R library ...'
   & $rscript -e "lib <- Sys.getenv('R_LIBS_USER'); dir.create(lib, recursive = TRUE, showWarnings = FALSE); install.packages('roxygen2', lib = lib, repos = 'https://cloud.r-project.org')"
   if ($LASTEXITCODE -ne 0) { exit 1 }
 }

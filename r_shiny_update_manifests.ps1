@@ -59,11 +59,13 @@ if (-not $rscript) {
 }
 & $rscript -e "quit(status = !requireNamespace('rsconnect', quietly = TRUE))" 2> $null
 if ($LASTEXITCODE -ne 0) {
-  Write-Host 'The R package rsconnect is missing; in R: install.packages("rsconnect")'
-  exit 1
+  Write-Host 'The R package rsconnect is not installed; installing it into your R library ...'
+  & $rscript -e "lib <- Sys.getenv('R_LIBS_USER'); dir.create(lib, recursive = TRUE, showWarnings = FALSE); install.packages('rsconnect', lib = lib, repos = 'https://cloud.r-project.org')"
+  if ($LASTEXITCODE -ne 0) { exit 1 }
 }
 
 # git tells which files it ignores, and whether a manifest changed
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) { Install-Program 'Git.Git' }
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
   Write-Host 'git is needed: winget install Git.Git'; exit 1
 }

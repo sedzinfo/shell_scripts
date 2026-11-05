@@ -70,8 +70,7 @@ $library = & $rscript -e "cat(Sys.getenv('R_LIBS_USER'))"
 # pak works out what to install and installs it
 & $rscript -e "quit(status = !requireNamespace('pak', quietly = TRUE))" 2> $null
 if ($LASTEXITCODE -ne 0) {
-  Write-Host 'The R package pak is needed to work out what to install.'
-  if (-not (Test-Yes 'Install pak now?')) { exit 1 }
+  Write-Host 'The R package pak is needed to work out what to install; installing it ...'
   & $rscript -e "install.packages('pak', lib = Sys.getenv('R_LIBS_USER'), repos = sprintf('https://r-lib.github.io/p/pak/stable/%s/%s/%s', .Platform`$pkgType, R.Version()`$os, R.Version()`$arch))"
   if ($LASTEXITCODE -ne 0) { exit 1 }
 }
