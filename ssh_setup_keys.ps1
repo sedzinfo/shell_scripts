@@ -180,6 +180,16 @@ if (-not (Test-Path -LiteralPath $File -PathType Leaf)) {
 }
 # .NET reads paths from the folder the process started in, not from PowerShell's
 $File = (Resolve-Path -LiteralPath $File).ProviderPath
+# ssh and ssh-keygen are the OpenSSH Client, a Windows feature: added when missing, after
+# Windows asks for administrator approval. A new program is on the PATH of new windows only:
+# this one gets it too
+if (-not (Get-Command ssh -ErrorAction SilentlyContinue) -or -not (Get-Command ssh-keygen -ErrorAction SilentlyContinue)) {
+  Write-Host 'Adding the OpenSSH Client (a Windows feature) ...'
+  try {
+    Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile', '-Command', 'Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0'
+  } catch { }
+  $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+}
 foreach ($program in 'ssh', 'ssh-keygen') {
   if (-not (Get-Command $program -ErrorAction SilentlyContinue)) {
     Write-Host "$program is needed: Settings > System > Optional features > OpenSSH Client"

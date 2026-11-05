@@ -146,6 +146,15 @@ $List = $List.Trim().Trim('"') -replace '^~', $HOME
 if (-not (Test-Path -LiteralPath $List -PathType Leaf)) {
   Write-Host "No list of machines: $List (the top of ssh_setup_keys.ps1 says how to write it)"; exit 1
 }
+# ssh is the OpenSSH Client, a Windows feature: added when missing, after Windows asks for
+# administrator approval. A new program is on the PATH of new windows only: this one gets it too
+if (-not (Get-Command ssh -ErrorAction SilentlyContinue)) {
+  Write-Host 'Adding the OpenSSH Client (a Windows feature) ...'
+  try {
+    Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile', '-Command', 'Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0'
+  } catch { }
+  $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+}
 if (-not (Get-Command ssh -ErrorAction SilentlyContinue)) {
   Write-Host 'ssh is needed: Settings > System > Optional features > OpenSSH Client'; exit 1
 }

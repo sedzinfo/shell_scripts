@@ -135,12 +135,18 @@ try {
   }
 
   # git lfs is needed only where a repository uses LFS; without it the LFS files that were
-  # never downloaded are not looked for. It comes with Git for Windows
+  # never downloaded are not looked for. It comes with Git for Windows, and is installed when
+  # missing
   git lfs version *> $null
   $lfs = $LASTEXITCODE -eq 0
   if (-not $lfs -and ($repositories | Where-Object { Test-UsesLfs $_.FullName } | Select-Object -First 1)) {
-    Write-Host 'Missing:'
-    Write-Host ('  {0,-14} {1,-26} {2}' -f 'git-lfs', '(Git LFS files)', 'comes with Git for Windows: https://git-scm.com')
+    Install-Program 'GitHub.GitLFS'
+    git lfs version *> $null
+    $lfs = $LASTEXITCODE -eq 0
+    if (-not $lfs) {
+      Write-Host 'Missing:'
+      Write-Host ('  {0,-14} {1,-26} {2}' -f 'git-lfs', '(Git LFS files)', 'winget install GitHub.GitLFS')
+    }
   }
 
   Write-Host "Files over $(Format-Size $min) in the repositories of $Root"

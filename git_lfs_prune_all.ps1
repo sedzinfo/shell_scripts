@@ -107,11 +107,15 @@ try {
     exit 1
   }
 
-  # it comes with Git for Windows
+  # it comes with Git for Windows, and is installed when missing
   git lfs version *> $null
   if ($LASTEXITCODE -ne 0) {
+    Install-Program 'GitHub.GitLFS'
+    git lfs version *> $null
+  }
+  if ($LASTEXITCODE -ne 0) {
     Write-Host 'Missing:'
-    Write-Host ('  {0,-14} {1,-26} {2}' -f 'git-lfs', '(Git LFS files)', 'comes with Git for Windows: https://git-scm.com')
+    Write-Host ('  {0,-14} {1,-26} {2}' -f 'git-lfs', '(Git LFS files)', 'winget install GitHub.GitLFS')
     exit 1
   }
 

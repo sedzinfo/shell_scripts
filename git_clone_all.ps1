@@ -12,16 +12,9 @@ param(
   [switch]$Ssh
 )
 
-# anything but y/yes is no
-function Test-Yes([string]$question) {
-  $answer = Read-Host "$question [y/N]"
-  return $answer -match '^\s*y(es)?\s*$'
-}
-
-# offers to install the programs this script needs, when they are missing.
-# Each argument is program:package:what it is for. It only asks (never installs
-# by itself), only once, and only where winget exists; with no, the script goes on
-# and shows what it can.
+# installs the programs this script needs, when they are missing, with winget and without
+# asking (an installer may ask for administrator approval). Each argument is
+# program:package:what it is for. Where winget is missing it only says what to install
 function Install-Missing {
   $packages = @(); $lines = @()
   foreach ($entry in $args) {
@@ -34,12 +27,13 @@ function Install-Missing {
   if ($packages.Count -eq 0) { return }
   Write-Host 'Missing:'
   $lines | ForEach-Object { Write-Host "  $_" }
-  if ((Get-Command winget -ErrorAction SilentlyContinue) -and -not [Console]::IsInputRedirected) {
-    if (Test-Yes "Install them now with winget install $($packages -join ' ')?") {
-      foreach ($package in $packages) { winget install --id $package --exact --source winget }
-      # a new program is on the PATH of new windows only: this one gets it too
-      $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+  if (Get-Command winget -ErrorAction SilentlyContinue) {
+    foreach ($package in $packages) {
+      Write-Host "Installing $package with winget ..."
+      winget install --id $package --exact --source winget --silent --accept-package-agreements --accept-source-agreements
     }
+    # a new program is on the PATH of new windows only: this one gets it too
+    $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
   } else {
     Write-Host "Install them with: winget install $($packages -join ' ')"
   }
