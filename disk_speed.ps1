@@ -1,5 +1,5 @@
 # Speed test of every drive: reading and writing in MB/s, sequential and random, as
-# CrystalDiskMark does (SEQ1M Q8, RND4K Q32, RND4K Q1). Uses fio.
+# CrystalDiskMark does (SEQ1M Q8, RND4K Q32, RND4K Q1). Uses fio, installed with winget when missing.
 # A drive with a volume (drive letter) with room is tested with a temporary file on it,
 # written, read and deleted. A drive without one is only read, straight from the drive, which
 # needs PowerShell run as administrator; nothing is ever written to a drive itself.
@@ -122,8 +122,20 @@ if ($List) {
 }
 
 # fio has a Windows installer, which puts it on the PATH
-$fio = (Get-Command fio -ErrorAction SilentlyContinue).Source
-if (-not $fio -and (Test-Path -LiteralPath "$env:ProgramFiles\fio\fio.exe")) { $fio = "$env:ProgramFiles\fio\fio.exe" }
+function Find-Fio {
+  $found = (Get-Command fio -ErrorAction SilentlyContinue).Source
+  if (-not $found -and (Test-Path -LiteralPath "$env:ProgramFiles\fio\fio.exe")) { $found = "$env:ProgramFiles\fio\fio.exe" }
+  return $found
+}
+$fio = Find-Fio
+# missing: installed with winget, which asks for administrator approval. The new PATH reaches
+# only new windows, so it is read again here
+if (-not $fio -and (Get-Command winget -ErrorAction SilentlyContinue)) {
+  Write-Host 'Installing fio (the speed tests) with winget ...'
+  & winget install --id fio.fio --exact --silent --accept-package-agreements --accept-source-agreements
+  $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+  $fio = Find-Fio
+}
 if (-not $fio) {
   Write-Host 'Missing:'
   Write-Host ('  {0,-14} {1,-26} {2}' -f 'fio', '(the speed tests)', 'https://github.com/axboe/fio/releases (fio-<version>-x64.msi)')

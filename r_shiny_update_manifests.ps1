@@ -22,6 +22,16 @@ function Test-Yes([string]$question) {
   return $answer -match '^\s*y(es)?\s*$'
 }
 
+# installs a missing program with winget, without asking (its installer may ask for
+# administrator approval). A new program is on the PATH of new windows only: this one gets
+# it too. Nothing happens where winget is missing
+function Install-Program([string]$package) {
+  if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { return }
+  Write-Host "Installing $package with winget ..."
+  winget install --id $package --exact --source winget --silent --accept-package-agreements --accept-source-agreements
+  $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+}
+
 # Rscript: on the PATH, or where the R installer put it, as it does not add R to the PATH
 function Find-Rscript {
   $command = Get-Command Rscript -ErrorAction SilentlyContinue
@@ -41,13 +51,11 @@ $rscript = Find-Rscript
 if (-not $rscript) {
   Write-Host 'Missing:'
   Write-Host ('  {0,-14} {1,-26} package {2}' -f 'Rscript', '(runs R)', 'RProject.R')
-  if ((Get-Command winget -ErrorAction SilentlyContinue) -and (Test-Yes 'Install it now with winget install RProject.R?')) {
-    winget install --id RProject.R --exact --source winget
-    $rscript = Find-Rscript
-  } else {
-    Write-Host 'Install it from https://cran.r-project.org/ or with: winget install RProject.R'
+  Install-Program 'RProject.R'
+  $rscript = Find-Rscript
+  if (-not $rscript) {
+    Write-Host 'Install it from https://cran.r-project.org/ or with: winget install RProject.R'; exit 1
   }
-  if (-not $rscript) { exit 1 }
 }
 & $rscript -e "quit(status = !requireNamespace('rsconnect', quietly = TRUE))" 2> $null
 if ($LASTEXITCODE -ne 0) {

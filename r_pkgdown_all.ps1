@@ -25,6 +25,16 @@ function Test-Yes([string]$question) {
   return $answer -match '^\s*y(es)?\s*$'
 }
 
+# installs a missing program with winget, without asking (its installer may ask for
+# administrator approval). A new program is on the PATH of new windows only: this one gets
+# it too. Nothing happens where winget is missing
+function Install-Program([string]$package) {
+  if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { return }
+  Write-Host "Installing $package with winget ..."
+  winget install --id $package --exact --source winget --silent --accept-package-agreements --accept-source-agreements
+  $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+}
+
 # Rscript: on the PATH, or where the R installer put it, as it does not add R to the PATH
 function Find-Rscript {
   $command = Get-Command Rscript -ErrorAction SilentlyContinue
