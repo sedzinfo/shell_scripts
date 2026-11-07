@@ -22,7 +22,8 @@
 #     as it is
 #   - otherwise adds your public key to ~/.ssh/authorized_keys there, as ssh-copy-id does
 #     (which Windows does not have): ssh asks for the password of the machine once, the key
-#     is added only if it is missing, and ~/.ssh gets the permissions sshd requires
+#     is added only if it is missing, and ~/.ssh gets the permissions sshd requires. A copy
+#     of the key that an earlier version spoiled with a byte order mark is removed
 #   - checks that the login now works without a password
 #   ssh_setup_keys.ps1 [file]               default ~\.ssh\machines.txt
 #   ssh_setup_keys.ps1 -Key ~\.ssh\id_rsa   copies this key instead
@@ -248,12 +249,19 @@ if (Test-Passphrase $Key) {
 }
 if ($Check) { Write-Host 'Check only: no key is copied' }
 
-# what a machine runs to add the key it reads, as ssh-copy-id does: only if it is not there
-# yet, after a line break if the file does not end with one, without the \r of Windows
-$addKey = 'umask 077; mkdir -p ~/.ssh; touch ~/.ssh/authorized_keys; key=$(tr -d ''\r''); ' +
+# what a machine runs to add the key, as ssh-copy-id does: only if it is not there yet, after
+# a line break if the file does not end with one. The key is written into the command, in
+# single quotes, rather than piped to ssh: when Windows uses UTF-8 (code page 65001), Windows
+# PowerShell 5.1 puts a byte order mark before what it pipes to a program, whatever
+# $OutputEncoding says, and sshd cannot read a line of authorized_keys that starts with it.
+# Such a line, left by an earlier version of this script, is removed
+$publicKey = [IO.File]::ReadAllText("$Key.pub").Trim()
+$quotedKey = "'" + ($publicKey -replace "'", "'\''") + "'"
+$addKey = "umask 077; mkdir -p ~/.ssh; touch ~/.ssh/authorized_keys; key=$quotedKey; " +
+  'bom=$(printf ''\357\273\277''); if grep -qxF "$bom$key" ~/.ssh/authorized_keys; then ' +
+  'grep -vxF "$bom$key" ~/.ssh/authorized_keys > ~/.ssh/authorized_keys.tmp; mv ~/.ssh/authorized_keys.tmp ~/.ssh/authorized_keys; fi; ' +
   'grep -qxF "$key" ~/.ssh/authorized_keys || { [ -z "$(tail -c 1 ~/.ssh/authorized_keys)" ] || echo >> ~/.ssh/authorized_keys; echo "$key" >> ~/.ssh/authorized_keys; }; ' +
   'chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys'
-$publicKey = [IO.File]::ReadAllText("$Key.pub").Trim()
 
 $asks = @(); $unreachable = @(); $already = 0; $setUp = 0; $lineNumber = 0; $seen = @{}
 foreach ($line in [IO.File]::ReadAllLines($File)) {
@@ -297,10 +305,7 @@ foreach ($line in [IO.File]::ReadAllLines($File)) {
     Write-Host "  copying your key: ssh asks for the password of $name once"
     # called directly, as only then the terminal is ssh's, so that the password you type reaches it
     $arguments = @($machine.Login + @($machine.Destination, $addKey) | ForEach-Object { Protect-Argument $_ })
-    # piped as UTF-8 without a byte order mark: $OutputEncoding can have one (UTF8 in a
-    # profile), and sshd does not read a line of authorized_keys that starts with it
-    $OutputEncoding = New-Object System.Text.UTF8Encoding $false
-    $publicKey | & ssh @arguments
+    & ssh @arguments
     if ($LASTEXITCODE -ne 0) {
       Write-Host '  the key could not be copied' -ForegroundColor Red
       $asks += $name; continue
