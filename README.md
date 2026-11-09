@@ -33,10 +33,12 @@ NVIDIA's are never offered.
 | [`hwrt_pi.sh`](hwrt_pi.sh) | The same for a Raspberry Pi, plus the power supply (under-voltage, throttling) | No |
 | [`disk_speed.sh`](disk_speed.sh) | Read and write speed of every drive, on a PC or a Raspberry Pi | Only a temporary test file, deleted at the end |
 | [`r_shiny_update_manifests.sh`](r_shiny_update_manifests.sh) | Regenerates `manifest.json` of the Shiny apps for Posit Connect | Rewrites `manifest.json` only, after asking |
+| [`r_manifest_check_all.sh`](r_manifest_check_all.sh) | Checks that the `manifest.json` of every Shiny app lists every file the app needs, and only files that are on GitHub | No |
 | [`r_install_packages.sh`](r_install_packages.sh) | Installs the system and R packages a repository needs | Installs, after asking |
 | [`r_document_all.sh`](r_document_all.sh) | Updates the help pages and `NAMESPACE` of every R package from its roxygen comments; `--check` lists the ones out of date | Rewrites `man/` and `NAMESPACE` after asking (not with `--check`); commits nothing |
 | [`r_cmd_check.sh`](r_cmd_check.sh) | Runs R CMD check on every R package and reports which have errors, warnings or notes | No (works in `~/.cache`) |
 | [`r_pkgdown_all.sh`](r_pkgdown_all.sh) | Builds the pkgdown website of every R package and reports failed builds and failing examples | Rewrites each site (`docs/`), after asking; commits nothing |
+| [`r_pkgdown_stale_all.sh`](r_pkgdown_stale_all.sh) | Finds the pkgdown websites that are older than what they show (code, help pages, README), or built but not pushed | No |
 | [`r_pdf_all.sh`](r_pdf_all.sh) | Makes the PDF reference manual of every R package | Rewrites `<package>.pdf` in each repository, or writes to `--to`, after asking; commits nothing |
 | [`r_article_caches.sh`](r_article_caches.sh) | Finds the knitr caches of pkgdown articles that are older than the package functions they use | No (`--clean` deletes the stale caches, after asking) |
 | [`r_build_all.sh`](r_build_all.sh) | Everything that makes an R package ready to push, step by step: help pages, install, R CMD check, website, manifests, PDF manual, tarball | Rewrites what the steps make, after asking once; commits nothing |
@@ -401,6 +403,22 @@ listed but not touched. Nothing is committed: commit and push the updated
 The versions written are the ones installed on the computer it runs on, so run
 it where the apps work.
 
+## r_manifest_check_all.sh
+
+```bash
+r_manifest_check_all.sh                   # every app in ~/GitHub with a manifest.json
+r_manifest_check_all.sh golemirt golemcat # only these
+```
+
+Posit Connect Cloud deploys an app from GitHub with the files its `manifest.json` lists, so a
+file the manifest leaves out is missing from the live app, which then fails at start or misses
+a tab, and a file it lists but git does not track cannot be found. For each app it reports:
+**missing**, files git tracks in `R/` and `inst/` (and `app.R`, `DESCRIPTION`, `NAMESPACE`)
+that the manifest does not list, unless `.rscignore` leaves them out; **not on GitHub**, files
+the manifest lists that git does not track; **deleted**, files the manifest lists that no
+longer exist. `r_shiny_update_manifests.sh <app>` writes the manifest anew. Needs `jq` (it
+offers to install it). The exit code is 1 if any app has a problem.
+
 ## r_install_packages.sh
 
 ```bash
@@ -532,6 +550,25 @@ Nothing is committed or pushed. Mirror repositories (`crypto` and
 without a `_pkgdown.yml` are listed and skipped (`pkgdown::use_pkgdown()` sets
 one up). The logs are in `~/.cache/r_pkgdown_all`; the exit code is 1 if any
 build failed. Needs R, pkgdown (it offers to install it) and pandoc.
+
+## r_pkgdown_stale_all.sh
+
+```bash
+r_pkgdown_stale_all.sh                 # every package in ~/GitHub with a _pkgdown.yml
+r_pkgdown_stale_all.sh golemcat rwf    # only these
+```
+
+Finds the websites that no longer show what the package is. For each package with a
+`_pkgdown.yml` it compares the site (`docs/pkgdown.yml`, where pkgdown writes `last_built`)
+with what it shows: `R/`, `man/`, `README.md`, `DESCRIPTION`, `NEWS.md`, `_pkgdown.yml`,
+`pkgdown/` and `vignettes/`. Changes are dated by their commits, not by the dates of the
+files, which a pull or a clone rewrites: when the built site is committed, what was committed
+after the commit that brought it counts (what was committed with it is in it); when it is built
+but not committed, what was committed after it was built. Uncommitted files count by their
+date. Each site is **up to date**, **stale** (with the files changed since), **never built**,
+or **not pushed** (built, but `docs/` not committed, so GitHub shows the old one).
+`r_pkgdown_all.sh <package>` or `r_build_all.sh <package> --only pkgdown` builds it again.
+The exit code is 1 if any site needs attention.
 
 ## r_pdf_all.sh
 
