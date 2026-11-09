@@ -53,7 +53,29 @@ foreach ($dir in Get-ChildItem -LiteralPath $Folder -Directory) {
     if ($LASTEXITCODE -ne 0) { $notes += , @('not fetched', 'Yellow') }
   }
   $changed = @(git -C $path status --porcelain).Count
-  if ($changed -gt 0) { $notes += , @("$changed uncommitted", 'Red') }
+  if ($changed -gt 0) {
+    # the date of the uncommitted file changed last: the files inside new folders too, not
+    # deleted files (they have no date), and the new name of a renamed file. Read as UTF-8,
+    # so that names with Greek or other letters are found
+    $encoding = [Console]::OutputEncoding
+    [Console]::OutputEncoding = [Text.Encoding]::UTF8
+    $raw = (git -C $path status --porcelain -z --untracked-files=all) -join ''
+    [Console]::OutputEncoding = $encoding
+    $entries = $raw -split "`0"
+    $latest = $null
+    for ($i = 0; $i -lt $entries.Count; $i++) {
+      $entry = $entries[$i]
+      if ($entry.Length -lt 4) { continue }
+      $state = $entry.Substring(0, 2)
+      $file = Join-Path $path $entry.Substring(3)
+      if ($state -match '^[RC]') { $i++ } # the next entry is the old name of a rename
+      $item = Get-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
+      if ($item -and (-not $latest -or $item.LastWriteTime -gt $latest)) { $latest = $item.LastWriteTime }
+    }
+    $when = if ($latest) { ' (latest {0})' -f $latest.ToString('dd/MM/yyyy HH:mm') } else { '' }
+    # the third element is printed after the note, in the normal color
+    $notes += , @("$changed uncommitted", 'Red', $when)
+  }
   git -C $path rev-parse --verify -q '@{u}' *> $null
   if ($LASTEXITCODE -eq 0) {
     $ahead = [int](git -C $path rev-list --count '@{u}..HEAD')
@@ -84,6 +106,7 @@ foreach ($dir in Get-ChildItem -LiteralPath $Folder -Directory) {
     for ($i = 0; $i -lt $notes.Count; $i++) {
       if ($i -gt 0) { Write-Host ', ' -NoNewline }
       Write-Host $notes[$i][0] -ForegroundColor $notes[$i][1] -NoNewline
+      if ($notes[$i].Count -gt 2) { Write-Host $notes[$i][2] -NoNewline }
     }
     Write-Host ''
   }
