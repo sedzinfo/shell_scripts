@@ -559,8 +559,8 @@ r_pkgdown_stale_all.sh golemcat rwf    # only these
 ```
 
 Finds the websites that no longer show what the package is. For each package with a
-`_pkgdown.yml` it compares the site (`docs/pkgdown.yml`, where pkgdown writes `last_built`)
-with what it shows: `R/`, `man/`, `README.md`, `DESCRIPTION`, `NEWS.md`, `_pkgdown.yml`,
+`_pkgdown.yml` it compares the site (`last_built` in `docs/pkgdown.yml`, or the last commit of `docs/` when later, since a
+lazy build does not rewrite `last_built`) with what it shows: `R/`, `man/`, `README.md`, `DESCRIPTION`, `NEWS.md`, `_pkgdown.yml`,
 `pkgdown/` and `vignettes/`. Changes are dated by their commits, not by the dates of the
 files, which a pull or a clone rewrites: when the built site is committed, what was committed
 after the commit that brought it counts (what was committed with it is in it); when it is built

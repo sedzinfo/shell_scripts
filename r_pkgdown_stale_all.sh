@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Finds the pkgdown websites that are out of date: for every R package in ~/GitHub (or the
 # folder given) with a _pkgdown.yml, it compares when the site was built (last_built in
-# docs/pkgdown.yml, which pkgdown writes) with the last change to what the site shows:
+# docs/pkgdown.yml, or the last commit of docs/ when later, as a lazy build does not rewrite
+# last_built) with the last change to what the site shows:
 # R/, man/, README.md, DESCRIPTION, NEWS.md, _pkgdown.yml, pkgdown/ and vignettes/.
 # Nothing is changed.
 #   r_pkgdown_stale_all.sh [folder] [package ...]   every package, or only the ones named
@@ -64,9 +65,18 @@ while IFS= read -r yml; do
   # what changed since the site: when the built site is committed, the commits after the one
   # that brought it (what was committed with it, or before, is in it); when it is built but
   # not committed, the commits after it was built. Uncommitted files by their date
+  # a lazy build (build_site(lazy = TRUE)) does not rewrite last_built: the site is as new
+  # as the last commit of anything in it, or, built but not committed, its newest file
   site_commit=""
-  if [ -z "$(git -C "$dir" status --porcelain -- "$dest/pkgdown.yml" 2> /dev/null)" ]; then
-    site_commit=$(git -C "$dir" log -1 --format=%H -- "$dest/pkgdown.yml" 2> /dev/null)
+  if [ -z "$(git -C "$dir" status --porcelain -- "$dest" 2> /dev/null)" ]; then
+    site_commit=$(git -C "$dir" log -1 --format=%H -- "$dest" 2> /dev/null)
+    t=$(git -C "$dir" log -1 --format=%ct -- "$dest" 2> /dev/null)
+    [ -n "$t" ] && [ "$t" -gt "$built" ] && built=$t
+  else
+    while IFS= read -r -d '' entry; do
+      [ -e "$dir/${entry:3}" ] || continue
+      t=$(stat -c %Y "$dir/${entry:3}"); [ "$t" -gt "$built" ] && built=$t
+    done < <(git -C "$dir" status --porcelain -z --untracked-files=all -- "$dest" 2> /dev/null)
   fi
   if [ -n "$site_commit" ]; then
     changed=$(git -C "$dir" diff --name-only "$site_commit" HEAD -- "${sources[@]}" 2> /dev/null | sort -u)

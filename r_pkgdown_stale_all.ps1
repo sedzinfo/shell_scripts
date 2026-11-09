@@ -1,6 +1,7 @@
 # Finds the pkgdown websites that are out of date: for every R package in Documents\GitHub (or
-# the folder given) with a _pkgdown.yml, it compares the site (docs\pkgdown.yml, where pkgdown
-# writes last_built) with the last change to what the site shows: R\, man\, README.md,
+# the folder given) with a _pkgdown.yml, it compares the site (last_built in docs\pkgdown.yml,
+# or the last commit of docs\ when later, as a lazy build does not rewrite last_built) with
+# the last change to what the site shows: R\, man\, README.md,
 # DESCRIPTION, NEWS.md, _pkgdown.yml, pkgdown\ and vignettes\. Nothing is changed.
 #   r_pkgdown_stale_all.ps1 [folder] [package ...]   every package, or only the ones named
 # When the built site is committed, the commits after the one that brought it count (what was
@@ -70,9 +71,19 @@ foreach ($yml in $ymls) {
   $built = [datetime]::Parse($builtLine, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::AdjustToUniversal)
   $builtEpoch = [DateTimeOffset]::new($built, [TimeSpan]::Zero).ToUnixTimeSeconds()
 
+  # a lazy build (build_site(lazy = TRUE)) does not rewrite last_built: the site is as new as
+  # the last commit of anything in it, or, built but not committed, its newest file
   $siteCommit = $null
-  if (-not (git -C $dir status --porcelain -- "$dest/pkgdown.yml" 2> $null)) {
-    $siteCommit = git -C $dir log -1 --format=%H -- "$dest/pkgdown.yml" 2> $null
+  if (-not (git -C $dir status --porcelain -- $dest 2> $null)) {
+    $siteCommit = git -C $dir log -1 --format=%H -- $dest 2> $null
+    $t = git -C $dir log -1 --format=%ct -- $dest 2> $null
+    if ($t -and [long]$t -gt $builtEpoch) { $builtEpoch = [long]$t; $built = [DateTimeOffset]::FromUnixTimeSeconds($builtEpoch).UtcDateTime }
+  } else {
+    foreach ($f in @(git -C $dir status --porcelain --untracked-files=all -- $dest 2> $null)) {
+      $item = Get-Item -LiteralPath (Join-Path $dir $f.Substring(3)) -Force -ErrorAction SilentlyContinue
+      if ($item -and $item.LastWriteTimeUtc -gt $built) { $built = $item.LastWriteTimeUtc }
+    }
+    $builtEpoch = [DateTimeOffset]::new($built, [TimeSpan]::Zero).ToUnixTimeSeconds()
   }
   if ($siteCommit) {
     $changed = @(git -C $dir diff --name-only $siteCommit HEAD -- @sources 2> $null)
