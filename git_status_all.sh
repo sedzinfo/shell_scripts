@@ -36,7 +36,25 @@ for dir in "$root"/*/; do
     notes+=("${yellow}not fetched${reset}")
   fi
   changed=$(git -C "$dir" status --porcelain | wc -l)
-  [ "$changed" -gt 0 ] && notes+=("${red}$changed uncommitted${reset}")
+  if [ "$changed" -gt 0 ]; then
+    # the date of the uncommitted file changed last: the files inside new folders too,
+    # not deleted files (they have no date), and the new name of a renamed file
+    latest=0
+    while IFS= read -r -d '' entry; do
+      state=${entry:0:2}
+      path=${entry:3}
+      [[ $state == R* || $state == C* ]] && IFS= read -r -d '' _ # the old name of a rename
+      [ -e "$dir/$path" ] || continue
+      t=$(stat -c %Y "$dir/$path" 2> /dev/null || stat -f %m "$dir/$path" 2> /dev/null) || continue
+      [ "$t" -gt "$latest" ] && latest=$t
+    done < <(git -C "$dir" status --porcelain -z --untracked-files=all)
+    when=""
+    if [ "$latest" -gt 0 ]; then
+      when=$(date -d "@$latest" '+%d/%m/%Y %H:%M' 2> /dev/null || date -r "$latest" '+%d/%m/%Y %H:%M')
+      when=" (latest $when)"
+    fi
+    notes+=("${red}$changed uncommitted${reset}$when")
+  fi
   if git -C "$dir" rev-parse --verify -q "@{u}" > /dev/null; then
     ahead=$(git -C "$dir" rev-list --count "@{u}..HEAD")
     behind=$(git -C "$dir" rev-list --count "HEAD..@{u}")
