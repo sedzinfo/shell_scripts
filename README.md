@@ -1,6 +1,6 @@
 # shell_scripts
 
-Small bash scripts: looking after many git repositories at once, and keeping an eye on the machine.
+Small bash scripts: looking after many git repositories at once, and keeping an eye on the machine and on the websites and their apps.
 The git scripts work on `~/GitHub` by default; if that folder does not exist, they ask for one
 (Tab completes paths, `~` works, an empty answer quits). Each one except `hwrt_pi.sh`,
 `machine_new.sh` and `tmux_update_plugins.sh` also comes as a PowerShell script for Windows
@@ -26,6 +26,7 @@ NVIDIA's are never offered.
 | [`git_clone_all.sh`](git_clone_all.sh) | Clones every repository of a GitHub user that is not downloaded yet | Only adds new folders |
 | [`git_push_checked.sh`](git_push_checked.sh) | Pushes what is not on GitHub yet, once R CMD check passes for each R package it changes | Pushes what passes, after asking; commits nothing |
 | [`git_actions_all.sh`](git_actions_all.sh) | The latest GitHub Actions run of every workflow of every repository, problems first, and which repositories have a problem | No |
+| [`sites_check.sh`](sites_check.sh) | Checks that the websites, every page of their sitemaps, and the Shiny apps they link to are up, and that each app starts without errors | No |
 | [`git_large_files_all.sh`](git_large_files_all.sh) | Finds files that GitHub would refuse (over 100 MB) or warn about (over 50 MB), files that should be in Git LFS, and LFS files never downloaded | No |
 | [`git_lfs_prune_all.sh`](git_lfs_prune_all.sh) | Frees the space of the local copies of old Git LFS versions (`git lfs prune`), which GitHub keeps | Deletes them, after asking |
 | [`hwrt.sh`](hwrt.sh) | Live view of RAM, CPU speed, GPU, temperatures and fans; beeps when RAM is low | No |
@@ -148,6 +149,43 @@ GITHUB_TOKEN=ghp_... git_actions_all.sh sedzinfo evalioncode
 ```
 
 It never changes anything. Needs `curl` and `jq`.
+
+## sites_check.sh
+
+```bash
+sites_check.sh [app address ...] [--no-apps]
+```
+
+Checks that the websites and the Shiny apps are up and working, one line each:
+
+- **Websites**: `https://sedzinfo.github.io/` and each site whose sitemap its
+  `robots.txt` lists, so a new site is checked once its sitemap is added there (as
+  it should be for Google anyway). Every page of each sitemap must answer; a page
+  that fails is tried again 5 seconds later, and if it fails again the site is
+  **BROKEN** and the page is listed with its HTTP status.
+- **Apps**: the app each site links to with the *live app* button of its
+  navigation bar (the `app` component with `aria-label: Open the live app` in its
+  `_pkgdown.yml`), and any app address given. They are opened all at once in
+  headless Chrome, which waits until Shiny has connected and drawn the first tab:
+  **ok**, **ERRORS** (an output that failed, or an error notification),
+  **CRASHED** (the grey screen), or **STILL BUSY** / **NOT STARTED** after 4
+  minutes. An app asleep on Posit Connect Cloud is woken up, which takes a minute
+  or two; an awake one is ready in seconds. The messages of `validate()`, such as
+  *Pick a file first*, are shown but are not problems. Only the first tab is
+  checked, as Shiny draws the others only when they are opened.
+
+At the end it lists the problems; the exit code is 1 if there are any, so it can
+run from cron. Opening an app wakes it, which counts towards its hours on Posit
+Connect Cloud and shinyapps.io, so from cron once a day is plenty.
+
+```bash
+sites_check.sh --no-apps                                      # only the websites: seconds, no Chrome needed
+sites_check.sh https://sedzinfo.shinyapps.io/golemworldbank/  # also an app no site links to
+SITE=https://user.github.io/ sites_check.sh                   # someone else's sites
+```
+
+It never changes anything. Needs R with its `curl` and `chromote` packages, and
+for the apps Chrome or Chromium (offered as `chromium` when missing).
 
 ## git_push_checked.sh
 
@@ -853,8 +891,9 @@ What is different on Windows:
   but takes a path pasted with *Copy as path* (quotes and all).
 - Switches are written the PowerShell way: `-NoFetch`, `-Check`, `-DryRun`, `-Strict`,
   `-AsCran`, `-Manual`, `-NoExamples`, `-To`, `-List`, `-Size`, `-History`, `-Yes`, `-Time`, `-ReadOnly`,
-  `-Key`, `-Parallel`, `-Clean`, `-Accept`, and
-  `-Root` for `r_shiny_update_manifests.ps1` (or `$env:ROOT`).
+  `-Key`, `-Parallel`, `-Clean`, `-Accept`, `-NoApps`,
+  `-Root` for `r_shiny_update_manifests.ps1` (or `$env:ROOT`), and `-Site` for
+  `sites_check.ps1` (or `$env:SITE`).
 - The logs and working copies that the bash scripts keep in `~/.cache` go to
   `%LOCALAPPDATA%` (e.g. `%LOCALAPPDATA%\r_cmd_check_all`).
 - Missing programs are offered with `winget install` instead of `sudo apt install`. R is
@@ -870,6 +909,8 @@ What is different on Windows:
   fan speeds; while [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor)
   runs (as administrator), it shows all of its temperatures and fans instead, as `lm-sensors`
   does on Linux. Below 3000 MB of available RAM it beeps.
+- `sites_check.ps1` installs the R packages it needs into your R library, and opens the apps
+  in Microsoft Edge when Chrome is not installed.
 - `r_install_packages.ps1` has no system packages to install, as R packages for Windows come
   ready built; only a package with C/C++ code needs
   [Rtools](https://cran.r-project.org/bin/windows/Rtools/) to be installed from source.
