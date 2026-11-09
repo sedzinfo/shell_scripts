@@ -41,7 +41,6 @@ for arg in "$@"; do
   esac
 done
 [ -n "$next" ] && { echo "--$next needs a list of steps, such as check,pdf"; exit 1; }
-[ "$next" = only_steps ] && { echo "--only needs a list of steps"; exit 1; }
 
 # the steps to run: all, or --only, without --skip; unknown names stop it
 in_list() { [[ ",$2," == *",$1,"* ]]; }

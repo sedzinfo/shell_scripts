@@ -39,6 +39,7 @@ NVIDIA's are never offered.
 | [`r_pkgdown_all.sh`](r_pkgdown_all.sh) | Builds the pkgdown website of every R package and reports failed builds and failing examples | Rewrites each site (`docs/`), after asking; commits nothing |
 | [`r_pdf_all.sh`](r_pdf_all.sh) | Makes the PDF reference manual of every R package | Rewrites `<package>.pdf` in each repository, or writes to `--to`, after asking; commits nothing |
 | [`r_article_caches.sh`](r_article_caches.sh) | Finds the knitr caches of pkgdown articles that are older than the package functions they use | No (`--clean` deletes the stale caches, after asking) |
+| [`r_build_all.sh`](r_build_all.sh) | Everything that makes an R package ready to push, step by step: help pages, install, R CMD check, website, manifests, PDF manual, tarball | Rewrites what the steps make, after asking once; commits nothing |
 | [`machine_new.sh`](machine_new.sh) | Sets up a new computer with Linux Mint with the programs of the old one | Installs, asks before each step |
 | [`machine_leave.sh`](machine_leave.sh) | Before handing back a computer: checks that everything is on GitHub, then removes your repositories, GitHub key and logins | Yes, asks before each step |
 | [`tmux_update_plugins.sh`](tmux_update_plugins.sh) | Updates the tmux plugins (TPM) and repairs what copying their folder broke | Only the plugins, after asking; never your tmux configuration |
@@ -608,6 +609,39 @@ so it can run before every build:
 r_article_caches.sh rwf --clean && Rscript -e 'pkgdown::build_site("~/GitHub/rwf/rwf", lazy = TRUE)'
 ```
 
+## r_build_all.sh
+
+```bash
+r_build_all.sh                          # every step, for every R package in ~/GitHub
+r_build_all.sh golemcat golemirt        # only these (package or folder names)
+r_build_all.sh golemcat --only pkgdown  # only these steps
+r_build_all.sh --skip check,pdf         # without these steps
+r_build_all.sh --yes                    # without asking first
+```
+
+Does in one go what `generate_package.R` does for one package, for every R package, step
+by step:
+
+| Step | What it makes | By |
+|---|---|---|
+| `document` | the help pages (`man/`) and `NAMESPACE`, from roxygen | `r_document_all.sh` |
+| `install` | the package, installed in the R library | `R CMD INSTALL` |
+| `check` | R CMD check: the tests and the examples | `r_cmd_check.sh` |
+| `pkgdown` | the website, for packages with a `_pkgdown.yml` | `r_pkgdown_all.sh` |
+| `manifests` | `manifest.json`, for the Shiny apps that already have one | `r_shiny_update_manifests.sh` |
+| `pdf` | the PDF manual, `<package>.pdf` | `r_pdf_all.sh` |
+| `tarball` | `<package>_<version>.tar.gz` at the top of the repository, replacing an older one | `R CMD build --resave-data` |
+
+Each step is the script that does it, so it does the same and reports the same. It lists the
+packages and the steps and asks once, first; the steps then run with `--yes`. With package
+names, only the named apps that already have a `manifest.json` get a new one (a first
+manifest is made with `r_shiny_update_manifests.sh <app>`). A step that fails does not stop
+the others. At the end, a summary of the steps and the repositories with changes to commit;
+the exit code is 1 if any step failed. The logs of install and tarball are in
+`~/.cache/r_build_all`. Not done here: the packages a repository needs
+(`r_install_packages.sh`), stale article caches (`r_article_caches.sh --clean`, before
+`pkgdown`), committing and pushing (`git_push_checked.sh` pushes once R CMD check passes).
+
 ## machine_new.sh
 
 ```bash
@@ -890,7 +924,7 @@ What is different on Windows:
   `~\GitHub` if that does not exist. The folder question does not complete paths with Tab,
   but takes a path pasted with *Copy as path* (quotes and all).
 - Switches are written the PowerShell way: `-NoFetch`, `-Check`, `-DryRun`, `-Strict`,
-  `-AsCran`, `-Manual`, `-NoExamples`, `-To`, `-List`, `-Size`, `-History`, `-Yes`, `-Time`, `-ReadOnly`,
+  `-AsCran`, `-Manual`, `-NoExamples`, `-To`, `-Skip`, `-Only`, `-List`, `-Size`, `-History`, `-Yes`, `-Time`, `-ReadOnly`,
   `-Key`, `-Parallel`, `-Clean`, `-Accept`, `-NoApps`,
   `-Root` for `r_shiny_update_manifests.ps1` (or `$env:ROOT`), and `-Site` for
   `sites_check.ps1` (or `$env:SITE`).
