@@ -161,7 +161,8 @@ for name in "${apps[@]}"; do
     continue
   fi
   if (cd "$dir" && Rscript -e "$manifest_code") > "$log" 2>&1; then
-    if git -C "$dir" ls-files --error-unmatch manifest.json > /dev/null 2>&1 && git -C "$dir" diff --quiet -- manifest.json; then
+    # against the last commit, so that a manifest written before and not committed counts too
+    if git -C "$dir" ls-files --error-unmatch manifest.json > /dev/null 2>&1 && git -C "$dir" diff --quiet HEAD -- manifest.json; then
       echo "    unchanged"
       unchanged+=("$name")
     else

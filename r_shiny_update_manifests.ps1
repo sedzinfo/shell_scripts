@@ -176,7 +176,8 @@ foreach ($name in $Apps) {
   if ($status -eq 0) {
     git -C $dir ls-files --error-unmatch manifest.json *> $null
     $tracked = $LASTEXITCODE -eq 0
-    git -C $dir diff --quiet -- manifest.json *> $null
+    # against the last commit, so that a manifest written before and not committed counts too
+    git -C $dir diff --quiet HEAD -- manifest.json *> $null
     if ($tracked -and $LASTEXITCODE -eq 0) {
       Write-Host '    unchanged'
       $unchanged += $name
