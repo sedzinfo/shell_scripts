@@ -2,10 +2,15 @@
 # every app of Documents\GitHub that already has one, so that it lists the package versions
 # installed now. It lists the apps and asks first. Files that git ignores (such as .Renviron)
 # are left out of the manifest, and an app that uses a package not installed here fails, as
-# the manifest would leave the package out. Nothing is committed or pushed.
+# the manifest would leave the package out. Each manifest that changed is committed on its own
+# and pushed, only when that pushes nothing else: the branch must track a branch on GitHub and
+# have no commits that are not pushed yet (they would go with it). A branch behind (such as
+# after the commits of GitHub Actions) first catches up, fast-forward only. Other changes,
+# staged or not, are left as they are.
 #   r_shiny_update_manifests.ps1              all apps with a manifest.json
 #   r_shiny_update_manifests.ps1 golemirt     only these apps (also a first manifest)
 #   r_shiny_update_manifests.ps1 -Yes         without asking first
+#   r_shiny_update_manifests.ps1 -NoPush      write them only, no commit or push
 # Another folder than Documents\GitHub: r_shiny_update_manifests.ps1 -Root ~\Projects
 # Needs R and its rsconnect package, and git.
 
@@ -13,7 +18,8 @@ param(
   [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
   [string[]]$Apps,
   [string]$Root = $env:ROOT,
-  [switch]$Yes
+  [switch]$Yes,
+  [switch]$NoPush
 )
 
 # anything but y/yes is no
@@ -101,6 +107,7 @@ if (-not $Apps) {
 # what is rewritten, and the question before anything is
 if ($Apps.Count -gt 0 -and -not $Yes) {
   Write-Host "manifest.json is written anew in: $($Apps -join ' ')"
+  if (-not $NoPush) { Write-Host 'and each one that changes is committed and pushed (manifest.json only)' }
   if ([Console]::IsInputRedirected) { Write-Host 'Not a terminal, so nothing can be asked: add -Yes to write them'; exit 1 }
   if (-not (Test-Yes 'Write them?')) { Write-Host 'Nothing was changed'; exit 0 }
 }
@@ -119,7 +126,40 @@ $manifestCode = @(
   "rsconnect::writeManifest(appDir = '.', appFiles = files, appPrimaryDoc = 'app.R')"
 ) -join '; '
 
-$updated = @(); $unchanged = @(); $failed = @()
+# commits manifest.json alone and pushes it, when that pushes nothing else; says why not
+# otherwise. The manifest stays written either way
+function Push-Manifest([string]$dir) {
+  $branch = git -C $dir symbolic-ref --short -q HEAD 2> $null
+  if ($LASTEXITCODE -ne 0 -or -not $branch) { Write-Host '    not pushed: not on a branch'; return $false }
+  $remote = git -C $dir config "branch.$branch.remote"
+  $merge = git -C $dir config "branch.$branch.merge"
+  if (-not $remote -or -not $merge) { Write-Host "    not pushed: $branch does not track a branch on GitHub"; return $false }
+  $null = git -C $dir fetch -q $remote
+  if ($LASTEXITCODE -ne 0) { Write-Host "    not pushed: could not reach $remote"; return $false }
+  $ahead, $behind = [int[]]((git -C $dir rev-list --left-right --count 'HEAD...@{u}') -split '\s+')
+  if ($ahead -gt 0) { Write-Host "    not pushed: $branch has $ahead commit(s) not pushed yet, which would go with it"; return $false }
+  # the commits of GitHub Actions (or of another computer) first
+  if ($behind -gt 0) {
+    git -C $dir merge -q --ff-only '@{u}' *> $null
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host "    not pushed: $branch is $behind commit(s) behind GitHub and could not catch up (changes here in the way)"; return $false
+    }
+  }
+  git -C $dir ls-files --error-unmatch manifest.json *> $null
+  $tracked = $LASTEXITCODE -eq 0
+  git -C $dir diff --quiet HEAD -- manifest.json *> $null
+  if ($tracked -and $LASTEXITCODE -eq 0) { Write-Host '    already on GitHub'; return $true }
+  # with the path, the commit takes manifest.json only, whatever else is staged
+  git -C $dir add -- manifest.json *> $null
+  if ($LASTEXITCODE -eq 0) { git -C $dir commit -q -m 'Update manifest.json' -- manifest.json *> $null }
+  if ($LASTEXITCODE -ne 0) { Write-Host '    not pushed: the commit failed'; return $false }
+  $null = git -C $dir push -q $remote "HEAD:$merge"
+  if ($LASTEXITCODE -ne 0) { Write-Host "    committed, but the push failed: git -C $dir push"; return $false }
+  Write-Host '    committed and pushed'
+  return $true
+}
+
+$updated = @(); $unchanged = @(); $failed = @(); $not_pushed = @()
 
 foreach ($name in $Apps) {
   $dir = Join-Path $Root $name
@@ -143,6 +183,7 @@ foreach ($name in $Apps) {
     } else {
       Write-Host '    updated'
       $updated += $name
+      if (-not $NoPush -and -not (Push-Manifest $dir)) { $not_pushed += $name }
     }
   } else {
     # the end of R's message says what went wrong (usually a missing package)
@@ -159,11 +200,15 @@ if ($not_deployed.Count -gt 0) {
   Write-Host 'Apps without a manifest.json, not touched (to make one: r_shiny_update_manifests.ps1 NAME):'
   $not_deployed | ForEach-Object { Write-Host "  $_" }
 }
-if ($updated.Count -gt 0) {
+if ($NoPush -and $updated.Count -gt 0) {
   Write-Host 'Commit and push each updated manifest.json for Posit Connect to use it.'
+} elseif ($not_pushed.Count -gt 0) {
+  Write-Host 'Updated but not pushed (the reason is above), to commit and push yourself:'
+  $not_pushed | ForEach-Object { Write-Host "  $_" }
 }
 if ($failed.Count -gt 0) {
   Write-Host "Failed ($($failed.Count)):"
   $failed | ForEach-Object { Write-Host "  $_" }
   exit 1
 }
+if ($not_pushed.Count -gt 0) { exit 1 }
