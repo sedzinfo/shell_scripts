@@ -1,5 +1,5 @@
 # Runs a command on every machine of your list (~\.ssh\machines.txt, the list of
-# ssh_setup_keys.ps1, with the same format), and shows what each machine printed and whether
+# setup\ssh_setup_keys.ps1, with the same format), and shows what each machine printed and whether
 # the command worked there:
 #   ssh_run_all.ps1 'sudo apt update && sudo apt full-upgrade -y'
 #   ssh_run_all.ps1 'df -h /'
@@ -12,7 +12,7 @@
 # machines run at the same time and nothing can be asked (a sudo that needs a password
 # fails), and what each machine printed is shown when all are done, and kept in
 # %LOCALAPPDATA%\ssh_run_all until the next run. The logins must not ask for a password:
-# ssh_setup_keys.ps1 sets that up, and a machine that asks is skipped.
+# setup\ssh_setup_keys.ps1 sets that up, and a machine that asks is skipped.
 #   ssh_run_all.ps1 [options] command
 #   -List ~\servers.txt   another list of machines
 #   -Parallel             all machines at the same time
@@ -86,7 +86,7 @@ function Read-Output([string]$path) {
 
 # the parts of a line that matter for logging in (port, user, jump host, identity, -o
 # settings), and the machine; forwards (-L -R -D), flags such as -N or -t, and a command
-# after the machine are left out (the same as in ssh_setup_keys.ps1)
+# after the machine are left out (the same as in setup\ssh_setup_keys.ps1)
 function ConvertFrom-MachineLine([string]$line) {
   $words = @($line.Trim() -split '\s+')
   if ($words[0] -ceq 'ssh') { $words = @($words | Select-Object -Skip 1) }
@@ -144,7 +144,7 @@ if (-not $commandText) {
 if (-not $List) { $List = Join-Path (Join-Path $HOME '.ssh') 'machines.txt' }
 $List = $List.Trim().Trim('"') -replace '^~', $HOME
 if (-not (Test-Path -LiteralPath $List -PathType Leaf)) {
-  Write-Host "No list of machines: $List (the top of ssh_setup_keys.ps1 says how to write it)"; exit 1
+  Write-Host "No list of machines: $List (the top of setup\ssh_setup_keys.ps1 says how to write it)"; exit 1
 }
 # ssh is the OpenSSH Client, a Windows feature: added when missing, after Windows asks for
 # administrator approval. A new program is on the PATH of new windows only: this one gets it too
@@ -211,7 +211,7 @@ function Write-Outcome($machine, [int]$code, [int]$seconds) {
     }
     if ($status -ne 0) {
       if ($printed -match 'Permission denied|No more authentication methods') {
-        Write-Host '  asks for a password: skipped (ssh_setup_keys.ps1 sets up the key)' -ForegroundColor Yellow; $script:asks += $machine.Name
+        Write-Host '  asks for a password: skipped (setup\ssh_setup_keys.ps1 sets up the key)' -ForegroundColor Yellow; $script:asks += $machine.Name
       } elseif ($printed -match 'Host key verification failed') {
         Write-Host '  not known yet: log in once with ssh to confirm its fingerprint' -ForegroundColor Yellow; $script:unreachable += $machine.Name
       } else {

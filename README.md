@@ -6,6 +6,12 @@ The git scripts work on `~/GitHub` by default; if that folder does not exist, th
 `machine_new.sh` and `tmux_update_plugins.sh` also comes as a PowerShell script for Windows
 (`.ps1`); see [Windows](#windows).
 
+The scripts that are run once, to set up a computer or to leave it, are in [`setup/`](setup):
+`machine_new.sh`, `machine_leave.sh`, `ssh_setup_keys.sh` and `path_add.sh`. `path_add.sh`
+puts this folder on the PATH, so that the other scripts run by name from any folder; `setup/`
+stays off it, so its scripts are run with their path, such as
+`~/GitHub/shell_scripts/setup/machine_new.sh`.
+
 Every script asks before it deletes, overwrites, pushes or installs anything, after
 showing what that is. Where a script has `--yes` (`-Yes` on Windows), that answers
 the question in advance; without a terminal to ask in (cron), such a script does
@@ -43,11 +49,12 @@ NVIDIA's are never offered.
 | [`r_pdf_all.sh`](r_pdf_all.sh) | Makes the PDF reference manual of every R package | Rewrites `<package>.pdf` in each repository, or writes to `--to`, after asking; commits nothing |
 | [`r_article_caches.sh`](r_article_caches.sh) | Finds the knitr caches of pkgdown articles that are older than the package functions they use | No (`--clean` deletes the stale caches, after asking) |
 | [`r_build_all.sh`](r_build_all.sh) | Everything that makes an R package ready to push, step by step: help pages, install, R CMD check, website, manifests, PDF manual, tarball | Rewrites what the steps make, after asking once; commits nothing |
-| [`machine_new.sh`](machine_new.sh) | Sets up a new computer with Linux Mint with the programs of the old one | Installs, asks before each step |
-| [`machine_leave.sh`](machine_leave.sh) | Before handing back a computer: checks that everything is on GitHub, then removes your repositories, GitHub key and logins | Yes, asks before each step |
+| [`setup/machine_new.sh`](setup/machine_new.sh) | Sets up a new computer with Linux Mint with the programs of the old one | Installs, asks before each step |
+| [`setup/machine_leave.sh`](setup/machine_leave.sh) | Before handing back a computer: checks that everything is on GitHub, then removes your repositories, GitHub key and logins | Yes, asks before each step |
 | [`tmux_update_plugins.sh`](tmux_update_plugins.sh) | Updates the tmux plugins (TPM) and repairs what copying their folder broke | Only the plugins, after asking; never your tmux configuration |
-| [`ssh_setup_keys.sh`](ssh_setup_keys.sh) | Sets up passwordless SSH logins to every machine of a list | Adds your public key on the machines that need it; asks before creating a key |
+| [`setup/ssh_setup_keys.sh`](setup/ssh_setup_keys.sh) | Sets up passwordless SSH logins to every machine of a list | Adds your public key on the machines that need it; asks before creating a key |
 | [`ssh_run_all.sh`](ssh_run_all.sh) | Runs a command on every machine of the same list, one after the other or all at once | Whatever the command does; asks before running it |
+| [`setup/path_add.sh`](setup/path_add.sh) | Adds this folder to your PATH, so that its scripts run by name from any folder | Adds one line to `~/.bashrc` (on Windows, the folder to your PATH) |
 
 ## git_status_all.sh
 
@@ -732,9 +739,9 @@ the exit code is 1 if any step failed. The logs of install and tarball are in
 ## machine_new.sh
 
 ```bash
-machine_new.sh          # asks before each step
-machine_new.sh --yes    # every step, without asking
-machine_new.sh --list   # only shows the steps and what they install
+setup/machine_new.sh          # asks before each step
+setup/machine_new.sh --yes    # every step, without asking
+setup/machine_new.sh --list   # only shows the steps and what they install
 ```
 
 Sets up a new computer with the latest Linux Mint (22 and later; Ubuntu 24.04
@@ -789,8 +796,8 @@ needs.
 ## machine_leave.sh
 
 ```bash
-machine_leave.sh --check            # only the report, nothing is removed
-machine_leave.sh [folder] [user]    # default ~/GitHub and sedzinfo
+setup/machine_leave.sh --check            # only the report, nothing is removed
+setup/machine_leave.sh [folder] [user]    # default ~/GitHub and sedzinfo
 ```
 
 For the day you hand back a computer. First it shows, for each of your
@@ -867,10 +874,10 @@ plugin could not be updated or a script of it cannot run.
 ## ssh_setup_keys.sh
 
 ```bash
-ssh_setup_keys.sh                        # the machines in ~/.ssh/machines.txt
-ssh_setup_keys.sh ~/servers.txt          # or in another file
-ssh_setup_keys.sh --key ~/.ssh/id_rsa    # copies this key instead of the first one found
-ssh_setup_keys.sh --check                # only checks which machines need no password
+setup/ssh_setup_keys.sh                        # the machines in ~/.ssh/machines.txt
+setup/ssh_setup_keys.sh ~/servers.txt          # or in another file
+setup/ssh_setup_keys.sh --key ~/.ssh/id_rsa    # copies this key instead of the first one found
+setup/ssh_setup_keys.sh --check                # only checks which machines need no password
 ```
 
 Sets up passwordless SSH logins, with your key instead of a password, to every
@@ -981,7 +988,7 @@ hello from pi4
   done in 0s
 pwonly@192.168.1.11:22
 pwonly@192.168.1.11: Permission denied (publickey,password).
-  asks for a password: skipped (ssh_setup_keys.sh sets up the key)
+  asks for a password: skipped (setup/ssh_setup_keys.sh sets up the key)
 ```
 
 The logins must not ask for a password (that is what `ssh_setup_keys.sh` sets up); a
@@ -992,6 +999,24 @@ stays in `~/.cache/ssh_run_all/<user@host:port>.log` until the next run. The exi
 is 1 if the command failed on a machine, or a machine could not be reached or asked
 for a password.
 
+## path_add.sh
+
+```bash
+~/GitHub/shell_scripts/setup/path_add.sh
+```
+
+Adds the shell_scripts folder to your PATH, so that its scripts run by name from any folder:
+`git_status_all.sh` instead of `~/GitHub/shell_scripts/git_status_all.sh`. It adds one line
+to `~/.bashrc`, which every new terminal reads (and to `~/.zshrc`, if there is one):
+
+```bash
+export PATH="$HOME/GitHub/shell_scripts:$PATH"
+```
+
+It adds the folder above `setup/`, wherever that is, and running it again changes nothing. A script
+cannot change the terminal it was started from: open a new one, or run `source ~/.bashrc` in
+it. To undo it, delete that line from `~/.bashrc`.
+
 ## Windows
 
 The `.ps1` scripts do the same as the bash ones, with the same arguments and questions, in
@@ -999,7 +1024,7 @@ Windows PowerShell 5.1 (part of Windows) or PowerShell 7. Run them from PowerShe
 
 ```powershell
 .\git_status_all.ps1 -NoFetch
-.\machine_leave.ps1 -Check
+.\setup\machine_leave.ps1 -Check
 ```
 
 If Windows refuses to run scripts, allow the ones on this computer once:
@@ -1069,33 +1094,28 @@ What is different on Windows:
   prints goes straight to the window, so that it can ask you things; only `-Parallel` keeps
   what each machine printed, in `%LOCALAPPDATA%\ssh_run_all` (with `_` for the `:` in the
   names, which Windows does not allow).
+- `path_add.ps1` adds the folder at the end of the PATH of your user (no administrator rights
+  needed), keeping the other folders as they were, also those written with a name such as
+  `%USERPROFILE%`. The window it runs in has it at once, and so do new windows; VS Code and the
+  terminals it opened only once VS Code is started again. To undo it: in the Start menu,
+  *Edit environment variables for your account*, then *Path*.
 
 ## New computer
 
 ```bash
-sudo apt install git                      # if git is not there yet
+sudo apt install git                          # if git is not there yet
 git clone git@github.com:sedzinfo/shell_scripts.git ~/GitHub/shell_scripts
-~/GitHub/shell_scripts/machine_new.sh     # programs, R, drivers, apps
-~/GitHub/shell_scripts/git_clone_all.sh   # download everything
-~/GitHub/shell_scripts/git_pull_all.sh    # later: keep it up to date
-```
-
-To run the scripts by name from any folder, add to `~/.bashrc`:
-
-```bash
-export PATH="$HOME/GitHub/shell_scripts:$PATH"
+~/GitHub/shell_scripts/setup/machine_new.sh   # programs, R, drivers, apps
+~/GitHub/shell_scripts/setup/path_add.sh      # run the scripts by name from any folder
+~/GitHub/shell_scripts/git_clone_all.sh       # download everything
+~/GitHub/shell_scripts/git_pull_all.sh        # later: keep it up to date
 ```
 
 On Windows, in PowerShell:
 
 ```powershell
 git clone https://github.com/sedzinfo/shell_scripts.git "$HOME\Documents\GitHub\shell_scripts"
+& "$HOME\Documents\GitHub\shell_scripts\setup\path_add.ps1"  # run them by name from any folder
 & "$HOME\Documents\GitHub\shell_scripts\git_clone_all.ps1"   # download everything
 & "$HOME\Documents\GitHub\shell_scripts\git_pull_all.ps1"    # later: keep it up to date
-```
-
-To run them by name from any folder (in new windows):
-
-```powershell
-[Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path', 'User') + ";$HOME\Documents\GitHub\shell_scripts", 'User')
 ```

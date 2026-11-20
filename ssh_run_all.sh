@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs a command on every machine of your list (~/.ssh/machines.txt, the list of
-# ssh_setup_keys.sh, with the same format), and shows what each machine printed
+# setup/ssh_setup_keys.sh, with the same format), and shows what each machine printed
 # and whether the command worked there:
 #   ssh_run_all.sh 'sudo apt update && sudo apt dist-upgrade -y && sudo apt autoremove -y'
 #   ssh_run_all.sh 'df -h /'
@@ -10,7 +10,7 @@
 # password of sudo or a question of apt; with --parallel all machines run at the
 # same time and nothing can be asked (a sudo that needs a password fails), and
 # what each machine printed is shown when all are done. The logins must not ask
-# for a password: ssh_setup_keys.sh sets that up, and a machine that asks is
+# for a password: setup/ssh_setup_keys.sh sets that up, and a machine that asks is
 # skipped.
 #   ssh_run_all.sh [options] command      (the options before the command)
 #   --list ~/servers.txt   another list of machines
@@ -43,7 +43,7 @@ if [ -z "$command" ]; then
   echo "Which command? For example: ssh_run_all.sh 'df -h /'  (see --help)"; exit 1
 fi
 if [ ! -f "$file" ]; then
-  echo "No list of machines: $file (ssh_setup_keys.sh --help says how to write it)"; exit 1
+  echo "No list of machines: $file (setup/ssh_setup_keys.sh --help says how to write it)"; exit 1
 fi
 
 red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; bold=$'\e[1m'; reset=$'\e[0m'
@@ -60,7 +60,7 @@ yes_no() {
 # the parts of a line that matter for logging in (port, user, jump host, identity,
 # -o settings), into login_args, and the machine, into destination; forwards
 # (-L -R -D), flags such as -N or -t, and a command after the machine are left out
-# (the same as in ssh_setup_keys.sh)
+# (the same as in setup/ssh_setup_keys.sh)
 parse_line() {
   local words=() word i=0
   read -r -a words <<< "$1"
@@ -146,7 +146,7 @@ outcome() {
     if probe=$(ssh -n -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR "${login_args[@]}" "$destination" exit 2>&1); then
       :   # it logs in, so the 255 is the command's
     elif grep -qE "Permission denied|No more authentication methods" <<< "$probe"; then
-      echo "  ${yellow}asks for a password: skipped (ssh_setup_keys.sh sets up the key)${reset}"; asks+=("$label"); return
+      echo "  ${yellow}asks for a password: skipped (setup/ssh_setup_keys.sh sets up the key)${reset}"; asks+=("$label"); return
     elif grep -q "Host key verification failed" <<< "$probe"; then
       echo "  ${yellow}not known yet: log in once with ssh to confirm its fingerprint${reset}"; unreachable+=("$label"); return
     else
