@@ -37,6 +37,7 @@ NVIDIA's are never offered.
 | [`r_install_packages.sh`](r_install_packages.sh) | Installs the system and R packages a repository needs | Installs, after asking |
 | [`r_document_all.sh`](r_document_all.sh) | Updates the help pages and `NAMESPACE` of every R package from its roxygen comments; `--check` lists the ones out of date | Rewrites `man/` and `NAMESPACE` after asking (not with `--check`); commits nothing |
 | [`r_cmd_check.sh`](r_cmd_check.sh) | Runs R CMD check on every R package and reports which have errors, warnings or notes | No (works in `~/.cache`) |
+| [`r_actions_all.sh`](r_actions_all.sh) | Whether the latest build and check of every R package on GitHub Actions went fine, and where a failed one failed | No |
 | [`r_pkgdown_all.sh`](r_pkgdown_all.sh) | Builds the pkgdown website of every R package and reports failed builds and failing examples | Rewrites each site (`docs/`), after asking; commits nothing |
 | [`r_pkgdown_stale_all.sh`](r_pkgdown_stale_all.sh) | Finds the pkgdown websites that are older than what they show (code, help pages, README), or built but not pushed | No |
 | [`r_pdf_all.sh`](r_pdf_all.sh) | Makes the PDF reference manual of every R package | Rewrites `<package>.pdf` in each repository, or writes to `--to`, after asking; commits nothing |
@@ -518,6 +519,55 @@ and the tests marked `skip_on_cran()` run (as with `devtools::check()`);
 `--as-cran` keeps CRAN's rules. `r_install_packages.sh` installs what a package
 needs.
 
+## r_actions_all.sh
+
+```bash
+r_actions_all.sh                   # every R package in ~/GitHub
+r_actions_all.sh golemcat rwf      # only these (package or folder names)
+r_actions_all.sh ~/Projects        # another folder
+```
+
+The same as `git_actions_all.sh`, but only for the R packages, and only their build and their
+check. For each R package (a folder with a `DESCRIPTION`, also one folder down as in
+`rwf/rwf`), it finds its repository on GitHub from the remote `origin`, and the workflows of
+that repository that build it or check it, told apart by what they run: **build** runs
+`R CMD build` (`build-tarball.yml`), **check** runs R CMD check, with the tests
+(`R-CMD-check.yaml`, or `r.yml` in rwf). Then it asks GitHub for the latest run of each on
+the default branch (`main`); runs on other branches and of pull requests do not count. One
+line per package, with the result of each and when it started:
+
+```text
+package        build                     check
+covid          success     20/11 10:58   no workflow
+golemcat       success     19/11 20:13   success     20/11 11:09
+golemcrypto    failure     12/11 14:32   in_progress 20/11 11:12
+    build failure: https://github.com/sedzinfo/golemcrypto/actions/runs/43218886139
+      build: Build PDF manual
+snp            success     19/11 20:24   no runs on main
+    check: R-CMD-check.yaml runs only on the branches [master], not on main
+```
+
+- **success** (green): it went fine
+- **failure**, **cancelled**, **timed_out** (red): with the link to the run, and for a
+  failure the job that failed and the step it failed at
+- **in_progress**, **queued** (yellow): still running, as after a push; run it again in a
+  few minutes
+- **no runs on main** (red): the workflow never ran there; when its `on:` names other
+  branches only (`master`, after the default branch was renamed), it says so
+- **not on GitHub** (red): the workflow is in the folder but not pushed yet
+- **no workflow** (grey): the repository has none that builds, or checks
+
+The build workflows run only when the package itself changes (their `paths:`), so the latest
+build can be days older than the latest check. At the end it lists the packages still
+running and those with a problem; the exit code is 1 if any has a problem, so it can run
+from cron. `r_cmd_check.sh <package>` runs the same check here, with all of R's messages.
+
+With the GitHub CLI logged in (`gh auth login`) its token is used by itself, or
+`GITHUB_TOKEN=ghp_... r_actions_all.sh`. Without a token it sees only public repositories,
+and GitHub allows 60 requests an hour, about 3 per package. It takes about 20 seconds for a
+dozen packages, as it asks GitHub one question at a time. It never changes anything. Needs
+`curl` and `jq`.
+
 ## r_pkgdown_all.sh
 
 ```bash
@@ -982,6 +1032,8 @@ What is different on Windows:
   does on Linux. Below 3000 MB of available RAM it beeps.
 - `sites_check.ps1` installs the R packages it needs into your R library, and opens the apps
   in Microsoft Edge when Chrome is not installed.
+- `r_actions_all.ps1` needs neither curl nor jq, as PowerShell asks GitHub itself. A token for
+  one run: `$env:GITHUB_TOKEN = 'ghp_...'; .\r_actions_all.ps1; Remove-Item Env:GITHUB_TOKEN`.
 - `r_install_packages.ps1` has no system packages to install, as R packages for Windows come
   ready built; only a package with C/C++ code needs
   [Rtools](https://cran.r-project.org/bin/windows/Rtools/) to be installed from source.
