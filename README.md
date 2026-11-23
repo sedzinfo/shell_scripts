@@ -7,9 +7,10 @@ The git scripts work on `~/GitHub` by default; if that folder does not exist, th
 (`.ps1`); see [Windows](#windows).
 
 The scripts that are run once, to set up a computer or to leave it, are in [`setup/`](setup):
-`machine_new.sh`, `machine_leave.sh`, `ssh_setup_keys.sh` and `path_add.sh`. `path_add.sh`
-puts this folder on the PATH, so that the other scripts run by name from any folder; `setup/`
-stays off it, so its scripts are run with their path, such as
+`machine_new.sh`, `machine_leave.sh`, `ssh_setup_keys.sh` and `path_add.sh`. The scripts that
+watch the machine (`hwrt.sh`, `hwrt_pi.sh`, `disk_speed.sh`) are in [`monitor/`](monitor).
+`path_add.sh` puts this folder and `monitor/` on the PATH, so that the other scripts run by
+name from any folder; `setup/` stays off it, so its scripts are run with their path, such as
 `~/GitHub/shell_scripts/setup/machine_new.sh`.
 
 The functions that several scripts share, such as the question that offers to install a
@@ -59,7 +60,7 @@ NVIDIA's are never offered.
 | [`tmux_update_plugins.sh`](tmux_update_plugins.sh) | Updates the tmux plugins (TPM) and repairs what copying their folder broke | Only the plugins, after asking; never your tmux configuration |
 | [`setup/ssh_setup_keys.sh`](setup/ssh_setup_keys.sh) | Sets up passwordless SSH logins to every machine of a list | Adds your public key on the machines that need it; asks before creating a key |
 | [`ssh_run_all.sh`](ssh_run_all.sh) | Runs a command on every machine of the same list, one after the other or all at once | Whatever the command does; asks before running it |
-| [`setup/path_add.sh`](setup/path_add.sh) | Adds this folder to your PATH, so that its scripts run by name from any folder | Adds one line to `~/.bashrc` (on Windows, the folder to your PATH) |
+| [`setup/path_add.sh`](setup/path_add.sh) | Adds this folder and `monitor/` to your PATH, so that their scripts run by name from any folder | Adds one line to `~/.bashrc` (on Windows, the folders to your PATH) |
 
 ## git_status_all.sh
 
@@ -1010,17 +1011,19 @@ for a password.
 ~/GitHub/shell_scripts/setup/path_add.sh
 ```
 
-Adds the shell_scripts folder to your PATH, so that its scripts run by name from any folder:
-`git_status_all.sh` instead of `~/GitHub/shell_scripts/git_status_all.sh`. It adds one line
-to `~/.bashrc`, which every new terminal reads (and to `~/.zshrc`, if there is one):
+Adds the shell_scripts folder and its `monitor/` folder to your PATH, so that their scripts run
+by name from any folder: `git_status_all.sh` instead of `~/GitHub/shell_scripts/git_status_all.sh`,
+and `hwrt.sh` instead of `~/GitHub/shell_scripts/monitor/hwrt.sh`. It adds one line to
+`~/.bashrc`, which every new terminal reads (and to `~/.zshrc`, if there is one):
 
 ```bash
-export PATH="$HOME/GitHub/shell_scripts:$PATH"
+export PATH="$HOME/GitHub/shell_scripts:$HOME/GitHub/shell_scripts/monitor:$PATH"
 ```
 
-It adds the folder above `setup/`, wherever that is, and running it again changes nothing. A script
-cannot change the terminal it was started from: open a new one, or run `source ~/.bashrc` in
-it. To undo it, delete that line from `~/.bashrc`.
+It adds the folder above `setup/`, wherever that is, and running it again changes nothing;
+after an older run that added only the shell_scripts folder, it adds a line with `monitor/`
+alone. A script cannot change the terminal it was started from: open a new one, or run
+`source ~/.bashrc` in it. To undo it, delete the lines it added from `~/.bashrc`.
 
 ## Windows
 
@@ -1099,7 +1102,7 @@ What is different on Windows:
   prints goes straight to the window, so that it can ask you things; only `-Parallel` keeps
   what each machine printed, in `%LOCALAPPDATA%\ssh_run_all` (with `_` for the `:` in the
   names, which Windows does not allow).
-- `path_add.ps1` adds the folder at the end of the PATH of your user (no administrator rights
+- `path_add.ps1` adds the folders at the end of the PATH of your user (no administrator rights
   needed), keeping the other folders as they were, also those written with a name such as
   `%USERPROFILE%`. The window it runs in has it at once, and so do new windows; VS Code and the
   terminals it opened only once VS Code is started again. To undo it: in the Start menu,
