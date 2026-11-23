@@ -36,34 +36,34 @@ NVIDIA's are never offered.
 
 | Script | What it does | Changes anything? |
 |---|---|---|
-| [`git_status_all.sh`](git_status_all.sh) | One line per repository: clean, or what is not yet on GitHub | No |
-| [`git_pull_all.sh`](git_pull_all.sh) | Pulls every repository | Yes, asks before anything destructive |
-| [`git_clone_all.sh`](git_clone_all.sh) | Clones every repository of a GitHub user that is not downloaded yet | Only adds new folders |
-| [`git_push_checked.sh`](git_push_checked.sh) | Pushes what is not on GitHub yet, once R CMD check passes for each R package it changes | Pushes what passes, after asking; commits nothing |
-| [`git_actions_all.sh`](git_actions_all.sh) | The latest GitHub Actions run of every workflow of every repository, problems first, and which repositories have a problem | No |
-| [`sites_check.sh`](sites_check.sh) | Checks that the websites, every page of their sitemaps, and the Shiny apps they link to are up, and that each app starts without errors | No |
-| [`git_large_files_all.sh`](git_large_files_all.sh) | Finds files that GitHub would refuse (over 100 MB) or warn about (over 50 MB), files that should be in Git LFS, and LFS files never downloaded | No |
-| [`git_lfs_prune_all.sh`](git_lfs_prune_all.sh) | Frees the space of the local copies of old Git LFS versions (`git lfs prune`), which GitHub keeps | Deletes them, after asking |
-| [`hwrt.sh`](monitor/hwrt.sh) | Live view of RAM, CPU speed, GPU, temperatures and fans; beeps when RAM is low | No |
-| [`hwrt_pi.sh`](monitor/hwrt_pi.sh) | The same for a Raspberry Pi, plus the power supply (under-voltage, throttling) | No |
-| [`disk_speed.sh`](monitor/disk_speed.sh) | Read and write speed of every drive, on a PC or a Raspberry Pi | Only a temporary test file, deleted at the end |
-| [`r_shiny_update_manifests.sh`](r_shiny_update_manifests.sh) | Regenerates `manifest.json` of the Shiny apps for Posit Connect | Rewrites `manifest.json` only, after asking |
-| [`r_manifest_check_all.sh`](r_manifest_check_all.sh) | Checks that the `manifest.json` of every Shiny app lists every file the app needs, and only files that are on GitHub | No |
-| [`r_install_packages.sh`](r_install_packages.sh) | Installs the system and R packages a repository needs | Installs, after asking |
-| [`r_document_all.sh`](r_document_all.sh) | Updates the help pages and `NAMESPACE` of every R package from its roxygen comments; `--check` lists the ones out of date | Rewrites `man/` and `NAMESPACE` after asking (not with `--check`); commits nothing |
-| [`r_cmd_check.sh`](r_cmd_check.sh) | Runs R CMD check on every R package and reports which have errors, warnings or notes | No (works in `~/.cache`) |
-| [`r_actions_all.sh`](r_actions_all.sh) | Whether the latest build and check of every R package on GitHub Actions went fine, and where a failed one failed | No |
-| [`r_pkgdown_all.sh`](r_pkgdown_all.sh) | Builds the pkgdown website of every R package and reports failed builds and failing examples | Rewrites each site (`docs/`), after asking; commits nothing |
-| [`r_pkgdown_stale_all.sh`](r_pkgdown_stale_all.sh) | Finds the pkgdown websites that are older than what they show (code, help pages, README), or built but not pushed | No |
-| [`r_pdf_all.sh`](r_pdf_all.sh) | Makes the PDF reference manual of every R package | Rewrites `<package>.pdf` in each repository, or writes to `--to`, after asking; commits nothing |
-| [`r_article_caches.sh`](r_article_caches.sh) | Finds the knitr caches of pkgdown articles that are older than the package functions they use | No (`--clean` deletes the stale caches, after asking) |
-| [`r_build_all.sh`](r_build_all.sh) | Everything that makes an R package ready to push, step by step: help pages, install, R CMD check, website, manifests, PDF manual, tarball | Rewrites what the steps make, after asking once; commits nothing |
-| [`setup/machine_new.sh`](setup/machine_new.sh) | Sets up a new computer with Linux Mint with the programs of the old one | Installs, asks before each step |
-| [`setup/machine_leave.sh`](setup/machine_leave.sh) | Before handing back a computer: checks that everything is on GitHub, then removes your repositories, GitHub key and logins | Yes, asks before each step |
-| [`tmux_update_plugins.sh`](tmux_update_plugins.sh) | Updates the tmux plugins (TPM) and repairs what copying their folder broke | Only the plugins, after asking; never your tmux configuration |
-| [`setup/ssh_setup_keys.sh`](setup/ssh_setup_keys.sh) | Sets up passwordless SSH logins to every machine of a list | Adds your public key on the machines that need it; asks before creating a key |
-| [`ssh_run_all.sh`](ssh_run_all.sh) | Runs a command on every machine of the same list, one after the other or all at once | Whatever the command does; asks before running it |
-| [`setup/path_add.sh`](setup/path_add.sh) | Adds this folder and `monitor/` to your PATH, so that their scripts run by name from any folder | Adds one line to `~/.bashrc` (on Windows, the folders to your PATH) |
+| [`git_status_all.sh`](git_status_all.sh) | One line per repository: clean, or what is not yet on GitHub |
+| [`git_pull_all.sh`](git_pull_all.sh) | Pulls every repository |
+| [`git_clone_all.sh`](git_clone_all.sh) | Clones every repository of a GitHub user that is not downloaded yet |
+| [`git_push_checked.sh`](git_push_checked.sh) | Pushes what is not on GitHub yet, once R CMD check passes for each R package it changes |
+| [`git_actions_all.sh`](git_actions_all.sh) | The latest GitHub Actions run of every workflow of every repository, problems first, and which repositories have a problem |
+| [`sites_check.sh`](sites_check.sh) | Checks that the websites, every page of their sitemaps, and the Shiny apps they link to are up, and that each app starts without errors |
+| [`git_large_files_all.sh`](git_large_files_all.sh) | Finds files that GitHub would refuse (over 100 MB) or warn about (over 50 MB), files that should be in Git LFS, and LFS files never downloaded |
+| [`git_lfs_prune_all.sh`](git_lfs_prune_all.sh) | Frees the space of the local copies of old Git LFS versions (`git lfs prune`), which GitHub keeps |
+| [`hwrt.sh`](monitor/hwrt.sh) | Live view of RAM, CPU speed, GPU, temperatures and fans; beeps when RAM is low |
+| [`hwrt_pi.sh`](monitor/hwrt_pi.sh) | The same for a Raspberry Pi, plus the power supply (under-voltage, throttling) |
+| [`disk_speed.sh`](monitor/disk_speed.sh) | Read and write speed of every drive, on a PC or a Raspberry Pi |
+| [`r_shiny_update_manifests.sh`](r_shiny_update_manifests.sh) | Regenerates `manifest.json` of the Shiny apps for Posit Connect |
+| [`r_manifest_check_all.sh`](r_manifest_check_all.sh) | Checks that the `manifest.json` of every Shiny app lists every file the app needs, and only files that are on GitHub |
+| [`r_install_packages.sh`](r_install_packages.sh) | Installs the system and R packages a repository needs |
+| [`r_document_all.sh`](r_document_all.sh) | Updates the help pages and `NAMESPACE` of every R package from its roxygen comments; `--check` lists the ones out of date |
+| [`r_cmd_check.sh`](r_cmd_check.sh) | Runs R CMD check on every R package and reports which have errors, warnings or notes |
+| [`r_actions_all.sh`](r_actions_all.sh) | Whether the latest build and check of every R package on GitHub Actions went fine, and where a failed one failed |
+| [`r_pkgdown_all.sh`](r_pkgdown_all.sh) | Builds the pkgdown website of every R package and reports failed builds and failing examples |
+| [`r_pkgdown_stale_all.sh`](r_pkgdown_stale_all.sh) | Finds the pkgdown websites that are older than what they show (code, help pages, README), or built but not pushed |
+| [`r_pdf_all.sh`](r_pdf_all.sh) | Makes the PDF reference manual of every R package |
+| [`r_article_caches.sh`](r_article_caches.sh) | Finds the knitr caches of pkgdown articles that are older than the package functions they use |
+| [`r_build_all.sh`](r_build_all.sh) | Everything that makes an R package ready to push, step by step: help pages, install, R CMD check, website, manifests, PDF manual, tarball |
+| [`setup/machine_new.sh`](setup/machine_new.sh) | Sets up a new computer with Linux Mint with the programs of the old one |
+| [`setup/machine_leave.sh`](setup/machine_leave.sh) | Before handing back a computer: checks that everything is on GitHub, then removes your repositories, GitHub key and logins |
+| [`tmux_update_plugins.sh`](tmux_update_plugins.sh) | Updates the tmux plugins (TPM) and repairs what copying their folder broke |
+| [`setup/ssh_setup_keys.sh`](setup/ssh_setup_keys.sh) | Sets up passwordless SSH logins to every machine of a list |
+| [`ssh_run_all.sh`](ssh_run_all.sh) | Runs a command on every machine of the same list, one after the other or all at once |
+| [`setup/path_add.sh`](setup/path_add.sh) | Adds this folder and `monitor/` to your PATH, so that their scripts run by name from any folder |
 
 ## git_status_all.sh
 
