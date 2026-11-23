@@ -27,15 +27,18 @@ command -v curl > /dev/null && command -v jq > /dev/null || exit 1
 # the list of repositories, 100 per page: with a token of that user, public and
 # private; otherwise public only (a token of someone else still raises the limit
 # of requests)
-url="https://api.github.com/users/$user/repos?type=owner"; auth=()
+url="https://api.github.com/users/$user/repos?type=owner"; config=()
 token="${GITHUB_TOKEN:-}"
 if [ -z "$token" ] && command -v gh > /dev/null; then
   token=$(gh auth token 2> /dev/null)
 fi
+# curl gets the token on its standard input, as a header, so that it is not in the list
+# of processes, which others can see
+github_api() { printf '%s\n' "${config[@]}" | curl -fsS --config - "$@"; }
 scope="public only: no token (GITHUB_TOKEN=ghp_... or gh auth login for private ones)"
 if [ -n "$token" ]; then
-  auth=(-H "Authorization: Bearer $token")
-  owner=$(curl -fsS "${auth[@]}" https://api.github.com/user | jq -r .login) ||
+  config=("header = \"Authorization: Bearer $token\"")
+  owner=$(github_api https://api.github.com/user | jq -r .login) ||
     { echo "GitHub did not accept the token"; exit 1; }
   if [ "${owner,,}" = "${user,,}" ]; then
     url="https://api.github.com/user/repos?affiliation=owner"
@@ -48,7 +51,7 @@ fi
 repos=()
 page=1
 while :; do
-  response=$(curl -fsS "${auth[@]}" "$url&per_page=100&page=$page") || { echo "Could not reach GitHub"; exit 1; }
+  response=$(github_api "$url&per_page=100&page=$page") || { echo "Could not reach GitHub"; exit 1; }
   mapfile -t batch < <(jq -r '.[] | "\(.name) \(.ssh_url)"' <<< "$response")
   [ ${#batch[@]} -eq 0 ] && break
   repos+=("${batch[@]}")

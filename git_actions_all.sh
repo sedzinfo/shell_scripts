@@ -33,16 +33,19 @@ done
 check_packages 'curl:curl:asks GitHub for the runs' 'jq:jq:reads the answers'
 command -v curl > /dev/null && command -v jq > /dev/null || exit 1
 
-# the token: GITHUB_TOKEN, else the GitHub CLI's when it is logged in
+# the token: GITHUB_TOKEN, else the GitHub CLI's when it is logged in. curl gets the
+# headers, the token among them, on its standard input, so that the token is not in the
+# list of processes, which others can see
 token="${GITHUB_TOKEN:-}"
 if [ -z "$token" ] && command -v gh > /dev/null; then
   token=$(gh auth token 2> /dev/null)
 fi
-auth=(-H "Accept: application/vnd.github+json")
+config=('header = "Accept: application/vnd.github+json"')
+[ -n "$token" ] && config+=("header = \"Authorization: Bearer $token\"")
+github_api() { printf '%s\n' "${config[@]}" | curl -fsS --config - "$@"; }
 me=""
 if [ -n "$token" ]; then
-  auth+=(-H "Authorization: Bearer $token")
-  me=$(curl -fsS "${auth[@]}" https://api.github.com/user | jq -r .login) ||
+  me=$(github_api https://api.github.com/user | jq -r .login) ||
     { echo "GitHub did not accept the token"; exit 1; }
 else
   echo "No token (GITHUB_TOKEN or gh auth login): public repositories only, 60 requests an hour"
@@ -53,7 +56,7 @@ get_all() {
   local url="$1" page=1 response all="[]" sep="?"
   [[ "$url" == *\?* ]] && sep="&"
   while :; do
-    response=$(curl -fsS "${auth[@]}" "$url${sep}per_page=100&page=$page") || return 1
+    response=$(github_api "$url${sep}per_page=100&page=$page") || return 1
     [ "$(jq 'length' <<< "$response")" -eq 0 ] && break
     all=$(jq -s 'add' <<< "$all$response")
     [ "$(jq 'length' <<< "$response")" -lt 100 ] && break
@@ -66,7 +69,7 @@ get_all() {
 # own token, or a member's for an organisation)
 repos=()
 for owner in "${owners[@]}"; do
-  kind=$(curl -fsS "${auth[@]}" "https://api.github.com/users/$owner" | jq -r .type) ||
+  kind=$(github_api "https://api.github.com/users/$owner" | jq -r .type) ||
     { echo "GitHub user or organisation not found: $owner"; exit 1; }
   if [ "$kind" = "Organization" ]; then
     url="https://api.github.com/orgs/$owner/repos?type=all"
@@ -96,7 +99,7 @@ unreadable=()
 answers=$(mktemp -d) || exit 1
 trap 'rm -rf "$answers"' EXIT
 ask_runs() {
-  curl -fsS "${auth[@]}" "https://api.github.com/repos/${repos[$1]}/actions/runs?per_page=100" \
+  github_api "https://api.github.com/repos/${repos[$1]}/actions/runs?per_page=100" \
     > "$answers/$1" 2> "$answers/$1.err" || : > "$answers/$1.failed"
 }
 in_parallel ask_runs "${!repos[@]}"
