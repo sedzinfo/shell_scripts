@@ -12,6 +12,10 @@
 #   disk_speed.sh --time 10        seconds per test (default 5)
 #   disk_speed.sh --read-only      write nothing, only read the drives themselves
 
+# the functions that several scripts share
+# shellcheck source-path=SCRIPTDIR
+. "$(dirname "${BASH_SOURCE[0]}")/lib/helpers.sh" || exit 1
+
 args=("$@")
 size=1G
 seconds=5
@@ -37,37 +41,8 @@ if ! [[ "$seconds" =~ ^[0-9]+$ ]] || [ "$seconds" -eq 0 ]; then
 	echo "--time takes a number of seconds, not: $seconds"; exit 1
 fi
 
-# a line of 80 # characters, between the drives
-separator() { printf '#%.0s' {1..80}; printf '\n'; }
-
 # one line in three aligned columns: name, reading, details
 row() { printf "%-15s %10s   %s\n" "$1" "$2" "$3"; }
-
-# offers to install the programs this script needs, when they are missing.
-# Each argument is program:package:what it is for. It only asks (never installs
-# by itself), only once, and only where apt exists; with no, the script goes on
-# and shows what it can.
-check_packages() {
-	local entry program package purpose answer packages=() lines=()
-	for entry in "$@"; do
-		IFS=: read -r program package purpose <<< "$entry"
-		if ! command -v "$program" > /dev/null; then
-			packages+=("$package")
-			lines+=("$(printf '%-14s %-26s package %s' "$program" "($purpose)" "$package")")
-		fi
-	done
-	[ ${#packages[@]} -eq 0 ] && return 0
-	echo "Missing:"
-	printf '  %s\n' "${lines[@]}"
-	if command -v apt-get > /dev/null && [ -t 0 ]; then
-		read -r -p "Install them now with sudo apt install ${packages[*]}? [y/N]: " answer
-		if [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]; then
-			sudo apt install -y "${packages[@]}"
-		fi
-	else
-		echo "Install them with the package manager of this system: ${packages[*]}"
-	fi
-}
 
 # whole drives, not their partitions; no CD/DVD drives, RAM disks (zram), empty
 # card readers, or the boot areas of eMMC chips

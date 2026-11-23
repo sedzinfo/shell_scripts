@@ -25,6 +25,10 @@
 # or braces around a single expression. The exit code is 1
 # if a stale cache is left.
 
+# the functions that several scripts share
+# shellcheck source-path=SCRIPTDIR
+. "$(dirname "${BASH_SOURCE[0]}")/lib/helpers.sh" || exit 1
+
 root="$HOME/GitHub"; clean=0; accept=0; yes=0; only=(); root_given=0
 for arg in "$@"; do
   case "$arg" in
@@ -59,9 +63,6 @@ done
 root=$(cd "$root" && pwd)
 
 red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; bold=$'\e[1m'; reset=$'\e[0m'
-
-# a line of 80 # characters, between the packages
-separator() { printf '#%.0s' {1..80}; printf '\n'; }
 
 # anything but y/yes is no
 yes_no() {

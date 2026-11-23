@@ -20,6 +20,10 @@
 # The exit code is 1 if the command failed on a machine, or a machine could not
 # be reached or asked for a password.
 
+# the functions that several scripts share
+# shellcheck source-path=SCRIPTDIR
+. "$(dirname "${BASH_SOURCE[0]}")/lib/helpers.sh" || exit 1
+
 file="$HOME/.ssh/machines.txt"; parallel=0; yes=0; command_words=()
 # the options come first; from the first other word on, everything is the command
 # (ssh_run_all.sh df -h / runs df -h /)
@@ -47,9 +51,6 @@ if [ ! -f "$file" ]; then
 fi
 
 red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; bold=$'\e[1m'; reset=$'\e[0m'
-
-# a line of 80 # characters, between the machines
-separator() { printf '#%.0s' {1..80}; printf '\n'; }
 
 yes_no() {
   local answer

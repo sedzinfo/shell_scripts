@@ -13,6 +13,10 @@
 # repository. Exits 1 when a latest run has a problem, so it can run from cron.
 # Needs curl and jq.
 
+# the functions that several scripts share
+# shellcheck source-path=SCRIPTDIR
+. "$(dirname "${BASH_SOURCE[0]}")/lib/helpers.sh" || exit 1
+
 problems_only=false
 owners=()
 for arg in "$@"; do
@@ -24,32 +28,6 @@ for arg in "$@"; do
   esac
 done
 [ ${#owners[@]} -eq 0 ] && owners=(sedzinfo)
-
-# offers to install the programs this script needs, when they are missing.
-# Each argument is program:package:what it is for. It only asks (never installs
-# by itself), only once, and only where apt exists; with no, the script goes on
-# and shows what it can.
-check_packages() {
-  local entry program package purpose answer packages=() lines=()
-  for entry in "$@"; do
-    IFS=: read -r program package purpose <<< "$entry"
-    if ! command -v "$program" > /dev/null; then
-      packages+=("$package")
-      lines+=("$(printf '%-14s %-26s package %s' "$program" "($purpose)" "$package")")
-    fi
-  done
-  [ ${#packages[@]} -eq 0 ] && return 0
-  echo "Missing:"
-  printf '  %s\n' "${lines[@]}"
-  if command -v apt-get > /dev/null && [ -t 0 ]; then
-    read -r -p "Install them now with sudo apt install ${packages[*]}? [y/N]: " answer
-    if [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]; then
-      sudo apt install -y "${packages[@]}"
-    fi
-  else
-    echo "Install them with the package manager of this system: ${packages[*]}"
-  fi
-}
 
 # curl and jq are needed, so without them it stops
 check_packages 'curl:curl:asks GitHub for the runs' 'jq:jq:reads the answers'

@@ -31,6 +31,10 @@
 #   ssh_setup_keys.sh --check               only checks which machines need no password
 # The exit code is 1 if a machine still asks for a password or cannot be reached.
 
+# the functions that several scripts share
+# shellcheck source-path=SCRIPTDIR
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/helpers.sh" || exit 1
+
 file=""; key=""; check=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -54,9 +58,6 @@ if [ ! -f "$file" ]; then
 fi
 
 red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; bold=$'\e[1m'; reset=$'\e[0m'
-
-# a line of 80 # characters, between the machines
-separator() { printf '#%.0s' {1..80}; printf '\n'; }
 
 yes_no() {
   local answer

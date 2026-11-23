@@ -19,6 +19,10 @@
 # the next run. The exit code is 1 if any repository with commits to push was
 # not pushed.
 
+# the functions that several scripts share
+# shellcheck source-path=SCRIPTDIR
+. "$(dirname "${BASH_SOURCE[0]}")/lib/helpers.sh" || exit 1
+
 root="$HOME/GitHub"; dry_run=0; strict=0; yes=0; only=(); root_given=0
 for arg in "$@"; do
   case "$arg" in
@@ -47,9 +51,6 @@ done
 root=$(cd "$root" && pwd)
 
 red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; bold=$'\e[1m'; reset=$'\e[0m'
-
-# a line of 80 # characters, between the repositories
-separator() { printf '#%.0s' {1..80}; printf '\n'; }
 
 # minutes and seconds
 duration() { printf '%dm%02ds' $(($1 / 60)) $(($1 % 60)); }

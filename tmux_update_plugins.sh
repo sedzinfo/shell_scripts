@@ -25,6 +25,10 @@
 # $TMUX_PLUGIN_MANAGER_PATH. The exit code is 1 if a plugin could not be updated
 # or a script of it cannot run.
 
+# the functions that several scripts share
+# shellcheck source-path=SCRIPTDIR
+. "$(dirname "${BASH_SOURCE[0]}")/lib/helpers.sh" || exit 1
+
 dry_run=0; yes=0
 for arg in "$@"; do
   case "$arg" in
@@ -36,9 +40,6 @@ for arg in "$@"; do
 done
 
 red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; bold=$'\e[1m'; reset=$'\e[0m'
-
-# a line of 80 # characters, between the plugins
-separator() { printf '#%.0s' {1..80}; printf '\n'; }
 
 # a count with its noun: 1 symlink, 3 symlinks
 plural() { [ "$1" -eq 1 ] && echo "1 $2" || echo "$1 $2s"; }

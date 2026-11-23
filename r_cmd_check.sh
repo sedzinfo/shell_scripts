@@ -12,6 +12,10 @@
 # the tests skipped on CRAN run, unless --as-cran (r_install_packages.sh
 # installs what a package needs). The exit code is 1 if any package has errors.
 
+# the functions that several scripts share
+# shellcheck source-path=SCRIPTDIR
+. "$(dirname "${BASH_SOURCE[0]}")/lib/helpers.sh" || exit 1
+
 root="$HOME/GitHub"; as_cran=0; manual=0; only=(); root_given=0
 for arg in "$@"; do
   case "$arg" in
@@ -39,35 +43,6 @@ done
 root=$(cd "$root" && pwd)
 
 red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; bold=$'\e[1m'; reset=$'\e[0m'
-
-# a line of 80 # characters, between the packages
-separator() { printf '#%.0s' {1..80}; printf '\n'; }
-
-# offers to install the programs this script needs, when they are missing.
-# Each argument is program:package:what it is for. It only asks (never installs
-# by itself), only once, and only where apt exists; with no, the script goes on
-# and shows what it can.
-check_packages() {
-  local entry program package purpose answer packages=() lines=()
-  for entry in "$@"; do
-    IFS=: read -r program package purpose <<< "$entry"
-    if ! command -v "$program" > /dev/null; then
-      packages+=("$package")
-      lines+=("$(printf '%-14s %-26s package %s' "$program" "($purpose)" "$package")")
-    fi
-  done
-  [ ${#packages[@]} -eq 0 ] && return 0
-  echo "Missing:"
-  printf '  %s\n' "${lines[@]}"
-  if command -v apt-get > /dev/null && [ -t 0 ]; then
-    read -r -p "Install them now with sudo apt install ${packages[*]}? [y/N]: " answer
-    if [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]; then
-      sudo apt install -y "${packages[@]}"
-    fi
-  else
-    echo "Install them with the package manager of this system: ${packages[*]}"
-  fi
-}
 
 # R is needed, so without it it stops
 check_packages 'R:r-base-dev:runs R CMD check'

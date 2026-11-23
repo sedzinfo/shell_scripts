@@ -11,6 +11,10 @@
 #   machine_new.sh --yes    every step, without asking
 #   machine_new.sh --list   only shows the steps and what they install
 
+# the functions that several scripts share
+# shellcheck source-path=SCRIPTDIR
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/helpers.sh" || exit 1
+
 yes=0; list=0
 for arg in "$@"; do
   case "$arg" in
@@ -73,9 +77,6 @@ vscode_extensions=(anthropic.claude-code davidanson.vscode-markdownlint intellic
   ms-vscode-remote.remote-ssh ms-vscode-remote.remote-ssh-edit ms-vscode.makefile-tools ms-vscode.powershell
   ms-vscode.remote-explorer ms-vscode.remote-server qingpeng.common-lisp reditorsupport.r
   reditorsupport.r-syntax tomoki1207.pdf xdebug.php-debug)
-
-# a line of 80 # characters, between the steps
-separator() { printf '#%.0s' {1..80}; printf '\n'; }
 
 # anything but y/yes is no
 yes_no() {
