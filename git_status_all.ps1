@@ -8,6 +8,9 @@ param(
   [switch]$NoFetch
 )
 
+# the functions that several scripts share
+try { . "$PSScriptRoot/lib/helpers.ps1" } catch { Write-Host $_; exit 1 }
+
 # the folder given, or Documents\GitHub (where GitHub Desktop puts the repositories), or ~\GitHub
 if (-not $Folder) {
   $Folder = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'GitHub'
@@ -19,16 +22,6 @@ while (-not (Test-Path -LiteralPath $Folder -PathType Container)) {
   $Folder = Read-Host 'Folder with the repositories (empty to quit)'
   if (-not $Folder) { exit 1 }
   $Folder = $Folder.Trim().Trim('"') -replace '^~', $HOME
-}
-
-# installs a missing program with winget, without asking (its installer may ask for
-# administrator approval). A new program is on the PATH of new windows only: this one gets
-# it too. Nothing happens where winget is missing
-function Install-Program([string]$package) {
-  if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { return }
-  Write-Host "Installing $package with winget ..."
-  winget install --id $package --exact --source winget --silent --accept-package-agreements --accept-source-agreements
-  $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
 }
 
 # git is needed, so without it it stops

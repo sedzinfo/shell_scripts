@@ -19,35 +19,8 @@ param(
   [switch]$Yes
 )
 
-# anything but y/yes is no
-function Test-Yes([string]$question) {
-  $answer = Read-Host "$question [y/N]"
-  return $answer -match '^\s*y(es)?\s*$'
-}
-
-# installs a missing program with winget, without asking (its installer may ask for
-# administrator approval). A new program is on the PATH of new windows only: this one gets
-# it too. Nothing happens where winget is missing
-function Install-Program([string]$package) {
-  if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { return }
-  Write-Host "Installing $package with winget ..."
-  winget install --id $package --exact --source winget --silent --accept-package-agreements --accept-source-agreements
-  $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
-}
-
-# Rscript: on the PATH, or where the R installer put it, as it does not add R to the PATH
-function Find-Rscript {
-  $command = Get-Command Rscript -ErrorAction SilentlyContinue
-  if ($command) { return $command.Source }
-  foreach ($key in 'HKCU:\SOFTWARE\R-core\R', 'HKLM:\SOFTWARE\R-core\R') {
-    $path = (Get-ItemProperty -Path $key -ErrorAction SilentlyContinue).InstallPath
-    if ($path -and (Test-Path -LiteralPath "$path\bin\Rscript.exe")) { return "$path\bin\Rscript.exe" }
-  }
-  # the newest R in Program Files
-  Get-ChildItem "$env:ProgramFiles\R\R-*\bin\Rscript.exe" -ErrorAction SilentlyContinue |
-    Sort-Object { [version]($_.Directory.Parent.Name -replace '^R-', '' -replace '[^0-9.]', '') } |
-    Select-Object -Last 1 -ExpandProperty FullName
-}
+# the functions that several scripts share
+try { . "$PSScriptRoot/lib/helpers.ps1" } catch { Write-Host $_; exit 1 }
 
 # the folder is given as a path: a plain word is a package, as a package's name may also be a
 # folder here
@@ -100,19 +73,6 @@ if ($LASTEXITCODE -ne 0) {
   if ($LASTEXITCODE -ne 0) { exit 1 }
 }
 
-# the part of a path inside the folder, as rwf\rwf
-function Get-Relative([string]$path) {
-  if ($path.StartsWith($Root + [IO.Path]::DirectorySeparatorChar)) { return $path.Substring($Root.Length + 1) }
-  return $path
-}
-
-# the value of a field of a DESCRIPTION file, as Package
-function Get-Field([string]$description, [string]$field) {
-  foreach ($line in Get-Content -LiteralPath $description) {
-    if ($line -cmatch "^${field}:\s*(.*?)\s*$") { return $Matches[1] }
-  }
-}
-
 # the pkgdown configuration of a package folder, where pkgdown looks for it
 function Get-Config([string]$dir) {
   foreach ($file in '_pkgdown.yml', '_pkgdown.yaml', 'pkgdown/_pkgdown.yml', 'pkgdown/_pkgdown.yaml', 'inst/_pkgdown.yml') {
@@ -147,12 +107,6 @@ if ($dirs.Count -eq 0) {
 $cache = if ($env:XDG_CACHE_HOME) { $env:XDG_CACHE_HOME } elseif ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { Join-Path $HOME '.cache' }
 $out = Join-Path $cache 'r_pkgdown_all'
 New-Item -ItemType Directory -Path $out -Force | Out-Null
-
-# minutes and seconds since a time
-function Get-Duration([datetime]$since) {
-  $seconds = [int]((Get-Date) - $since).TotalSeconds
-  return '{0}m{1:00}s' -f [math]::Floor($seconds / 60), ($seconds % 60)
-}
 
 $examples = if ($NoExamples) { 'FALSE' } else { 'TRUE' }
 

@@ -50,14 +50,6 @@ if [ ! -f "$file" ]; then
   echo "No list of machines: $file (setup/ssh_setup_keys.sh --help says how to write it)"; exit 1
 fi
 
-red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; bold=$'\e[1m'; reset=$'\e[0m'
-
-yes_no() {
-  local answer
-  read -r -p "$1 [y/N]: " answer
-  [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]
-}
-
 # the parts of a line that matter for logging in (port, user, jump host, identity,
 # -o settings), into login_args, and the machine, into destination; forwards
 # (-L -R -D), flags such as -N or -t, and a command after the machine are left out

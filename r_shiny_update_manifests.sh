@@ -31,13 +31,6 @@ for arg in "$@"; do
   esac
 done
 
-# anything but y/yes is no
-yes_no() {
-  local answer
-  read -r -p "$1 [y/N]: " answer
-  [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]
-}
-
 # R is needed, so without it it stops
 check_packages 'Rscript:r-base-core:runs R'
 command -v Rscript > /dev/null || exit 1
@@ -46,13 +39,7 @@ if ! Rscript -e 'quit(status = !requireNamespace("rsconnect", quietly = TRUE))' 
   exit 1
 fi
 
-# ask for the folder until one that exists is given (Tab completes paths, ~ works)
-while [ ! -d "$root" ]; do
-  echo "Folder not found: $root"
-  read -e -r -p "Folder with the repositories (empty to quit): " root || exit 1
-  [ -z "$root" ] && exit 1
-  root="${root/#\~/$HOME}"
-done
+ask_folder
 
 # the apps: the ones named, or every folder with both app.R and manifest.json
 apps=(); not_deployed=()

@@ -41,22 +41,8 @@ for arg in "$@"; do
   esac
 done
 
-# ask for the folder until one that exists is given (Tab completes paths, ~ works)
-while [ ! -d "$root" ]; do
-  echo "Folder not found: $root"
-  read -e -r -p "Folder with the repositories (empty to quit): " root || exit 1
-  [ -z "$root" ] && exit 1
-  root="${root/#\~/$HOME}"
-done
+ask_folder
 root=$(cd "$root" && pwd)
-
-red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; bold=$'\e[1m'; reset=$'\e[0m'
-
-yes_no() {
-  local answer
-  read -r -p "$1 [y/N]: " answer
-  [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]
-}
 
 # a size as git lfs gives it, in units of 1000 (126 MB, 5.5 GB)
 size() {
@@ -88,11 +74,7 @@ for dir in "$root"/*/; do
   dir=${dir%/}
   [ -e "$dir/.git" ] || continue
   repo=$(basename "$dir")
-  if [ ${#only[@]} -gt 0 ]; then
-    wanted=0
-    for want in "${only[@]}"; do [ "$want" = "$repo" ] && wanted=1; done
-    [ $wanted -eq 1 ] || continue
-  fi
+  wanted "$repo" || continue
   checked=$((checked + 1))
 
   # where git lfs keeps the copies: .git/lfs/objects, or the folder of

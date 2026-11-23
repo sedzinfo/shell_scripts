@@ -14,9 +14,11 @@ name from any folder; `setup/` stays off it, so its scripts are run with their p
 `~/GitHub/shell_scripts/setup/machine_new.sh`.
 
 The functions that several scripts share, such as the question that offers to install a
-missing program, are in [`lib/helpers.sh`](lib/helpers.sh), which the scripts load from
-there (like `setup/`, `lib/` stays off the PATH). So a script runs from this folder, or from
-a copy of all of it: one copied on its own stops with `lib/helpers.sh: No such file or directory`.
+missing program, are in [`lib/`](lib): [`helpers.sh`](lib/helpers.sh) for the bash scripts and
+[`helpers.ps1`](lib/helpers.ps1) for the PowerShell ones. The scripts load them from there
+(like `setup/`, `lib/` stays off the PATH). So a script runs from this folder, or from a copy
+of all of it: one copied on its own stops, saying that `lib/helpers.sh` (or
+`lib/helpers.ps1`) is not there.
 
 Every script asks before it deletes, overwrites, pushes or installs anything, after
 showing what that is. Where a script has `--yes` (`-Yes` on Windows), that answers

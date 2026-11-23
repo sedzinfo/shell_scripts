@@ -20,6 +20,9 @@ param(
   [string[]]$Names
 )
 
+# the functions that several scripts share
+try { . "$PSScriptRoot/lib/helpers.ps1" } catch { Write-Host $_; exit 1 }
+
 $Root = $null; $only = @()
 foreach ($arg in $Names) {
   if ($arg -like '-*') { Write-Host "Unknown option: $arg"; exit 1 }
@@ -38,10 +41,6 @@ while (-not (Test-Path -LiteralPath $Root -PathType Container)) {
 }
 $Root = (Resolve-Path -LiteralPath $Root).ProviderPath.TrimEnd('\', '/')
 
-function Get-Relative([string]$path) {
-  if ($path.StartsWith($Root + [IO.Path]::DirectorySeparatorChar)) { return $path.Substring($Root.Length + 1) }
-  return $path
-}
 function Format-Time([datetime]$t) { $t.ToLocalTime().ToString('dd/MM/yyyy HH:mm') }
 
 $sources = 'R', 'man', 'README.md', 'DESCRIPTION', 'NEWS.md', '_pkgdown.yml', 'pkgdown', 'vignettes'

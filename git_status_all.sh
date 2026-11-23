@@ -4,6 +4,10 @@
 # counts are up to date (add --no-fetch to skip that, e.g. without internet).
 #   git_status_all.sh [folder] [--no-fetch]
 
+# the functions that several scripts share
+# shellcheck source-path=SCRIPTDIR
+. "$(dirname "${BASH_SOURCE[0]}")/lib/helpers.sh" || exit 1
+
 root="$HOME/GitHub"; fetch=1
 for arg in "$@"; do
   case "$arg" in
@@ -13,15 +17,8 @@ for arg in "$@"; do
   esac
 done
 
-# ask for the folder until one that exists is given (Tab completes paths, ~ works)
-while [ ! -d "$root" ]; do
-  echo "Folder not found: $root"
-  read -e -r -p "Folder with the repositories (empty to quit): " root || exit 1
-  [ -z "$root" ] && exit 1
-  root="${root/#\~/$HOME}"
-done
+ask_folder
 
-red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; reset=$'\e[0m'
 attention=0
 
 shopt -s dotglob

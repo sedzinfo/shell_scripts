@@ -5,18 +5,16 @@
 # is skipped (and listed at the end), never merged or rebased.
 #   git_pull_all.sh [folder]
 
+# the functions that several scripts share
+# shellcheck source-path=SCRIPTDIR
+. "$(dirname "${BASH_SOURCE[0]}")/lib/helpers.sh" || exit 1
+
 case "${1:-}" in
   -h|--help) sed -n '2,/^$/{s/^# \{0,1\}//;p}' "$0"; exit 0 ;;
 esac
 root="${1:-$HOME/GitHub}"
 
-# ask for the folder until one that exists is given (Tab completes paths, ~ works)
-while [ ! -d "$root" ]; do
-  echo "Folder not found: $root"
-  read -e -r -p "Folder with the repositories (empty to quit): " root || exit 1
-  [ -z "$root" ] && exit 1
-  root="${root/#\~/$HOME}"
-done
+ask_folder
 pulled=(); current=0; failed=()
 
 shopt -s dotglob

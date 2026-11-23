@@ -36,26 +36,12 @@ for arg in "$@"; do
 done
 [ $next_is_to -eq 1 ] && { echo "--to needs a folder"; exit 1; }
 
-# ask for the folder until one that exists is given (Tab completes paths, ~ works)
-while [ ! -d "$root" ]; do
-  echo "Folder not found: $root"
-  read -e -r -p "Folder with the repositories (empty to quit): " root || exit 1
-  [ -z "$root" ] && exit 1
-  root="${root/#\~/$HOME}"
-done
+ask_folder
 root=$(cd "$root" && pwd)
 if [ -n "$to" ]; then
   mkdir -p "$to" || exit 1
   to=$(cd "$to" && pwd)
 fi
-
-red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; bold=$'\e[1m'; reset=$'\e[0m'
-
-yes_no() {
-  local answer
-  read -r -p "$1 [y/N]: " answer
-  [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]
-}
 
 # R and LaTeX are needed, so without them it stops
 check_packages 'R:r-base-core:runs R CMD Rd2pdf' 'pdflatex:texlive-latex-extra:LaTeX, makes the PDF' \
@@ -74,19 +60,11 @@ fi
 dirs=()
 while IFS= read -r description; do
   dir=$(dirname "$description")
-  name=$(awk -F': *' '$1 == "Package" { sub(/[ \t\r]+$/, "", $2); print $2; exit }' "$description")
+  name=$(package_name "$description")
   [ -n "$name" ] || continue
-  if [ ${#only[@]} -gt 0 ]; then
-    wanted=0
-    for want in "${only[@]}"; do
-      [ "$want" = "$name" ] || [ "$want" = "$(basename "$dir")" ] && wanted=1
-    done
-    [ $wanted -eq 1 ] || continue
-  fi
+  wanted "$name" "$(basename "$dir")" || continue
   dirs+=("$dir")
-done < <(find "$root" -maxdepth 3 \
-           \( -name .git -o -name '*.Rcheck' -o -name renv -o -name venv -o -name .venv -o -name node_modules \) -prune \
-           -o -name DESCRIPTION -type f -print | sort)
+done < <(package_files "$root")
 if [ ${#dirs[@]} -eq 0 ]; then
   echo "No R packages${only[*]:+ named ${only[*]}} in $root"; exit 1
 fi

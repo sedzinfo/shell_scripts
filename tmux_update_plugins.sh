@@ -39,16 +39,8 @@ for arg in "$@"; do
   esac
 done
 
-red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; bold=$'\e[1m'; reset=$'\e[0m'
-
 # a count with its noun: 1 symlink, 3 symlinks
 plural() { [ "$1" -eq 1 ] && echo "1 $2" || echo "$1 $2s"; }
-
-yes_no() {
-  local answer
-  read -r -p "$1 [y/N]: " answer
-  [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]
-}
 
 # the git repositories of a plugin: the plugin itself and its submodules
 repositories() {

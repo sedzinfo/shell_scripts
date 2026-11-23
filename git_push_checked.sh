@@ -41,26 +41,8 @@ for arg in "$@"; do
   esac
 done
 
-# ask for the folder until one that exists is given (Tab completes paths, ~ works)
-while [ ! -d "$root" ]; do
-  echo "Folder not found: $root"
-  read -e -r -p "Folder with the repositories (empty to quit): " root || exit 1
-  [ -z "$root" ] && exit 1
-  root="${root/#\~/$HOME}"
-done
+ask_folder
 root=$(cd "$root" && pwd)
-
-red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; bold=$'\e[1m'; reset=$'\e[0m'
-
-# minutes and seconds
-duration() { printf '%dm%02ds' $(($1 / 60)) $(($1 % 60)); }
-
-# anything but y/yes is no
-yes_no() {
-  local answer
-  read -r -p "$1 [y/N]: " answer
-  [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]
-}
 
 # the checks are those of r_cmd_check.sh, which sits next to this script
 checker="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/r_cmd_check.sh"
@@ -142,11 +124,7 @@ for dir in "$root"/*/; do
   dir=${dir%/}
   [ -e "$dir/.git" ] || continue
   repo=$(basename "$dir")
-  if [ ${#only[@]} -gt 0 ]; then
-    wanted=0
-    for want in "${only[@]}"; do [ "$want" = "$repo" ] && wanted=1; done
-    [ $wanted -eq 1 ] || continue
-  fi
+  wanted "$repo" || continue
   found+=("$repo")
 
   # the branch (also in a repository without commits yet) and where it is pushed to

@@ -33,16 +33,8 @@ for arg in "$@"; do
   esac
 done
 
-# ask for the folder until one that exists is given (Tab completes paths, ~ works)
-while [ ! -d "$root" ]; do
-  echo "Folder not found: $root"
-  read -e -r -p "Folder with the repositories (empty to quit): " root || exit 1
-  [ -z "$root" ] && exit 1
-  root="${root/#\~/$HOME}"
-done
+ask_folder
 root=$(cd "$root" && pwd)
-
-red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; bold=$'\e[1m'; reset=$'\e[0m'
 
 # R is needed, so without it it stops
 check_packages 'R:r-base-dev:runs R CMD check'
@@ -55,9 +47,9 @@ declare -A folder_of=()
 duplicates=()
 while IFS= read -r description; do
   dir=$(dirname "$description")
-  # without the \r of a DESCRIPTION saved on Windows; a name R would not take is skipped,
-  # as it names the folder that each check deletes and makes anew
-  name=$(awk -F': *' '$1 == "Package" { sub(/[ \t\r]+$/, "", $2); print $2; exit }' "$description")
+  # a name R would not take is skipped, as it names the folder that each check deletes
+  # and makes anew
+  name=$(package_name "$description")
   [[ "$name" =~ ^[A-Za-z][A-Za-z0-9.]*$ ]] || continue
   if [ -z "${folder_of[$name]:-}" ]; then
     folder_of[$name]=$dir
@@ -67,20 +59,12 @@ while IFS= read -r description; do
   else
     duplicates+=("${dir#"$root"/} (the same package as ${folder_of[$name]#"$root"/})")
   fi
-done < <(find "$root" -maxdepth 3 \
-           \( -name .git -o -name '*.Rcheck' -o -name renv -o -name venv -o -name .venv -o -name node_modules \) -prune \
-           -o -name DESCRIPTION -type f -print | sort)
+done < <(package_files "$root")
 
 # the packages named on the command line, by package name or folder name
 names=()
 for name in $(printf '%s\n' "${!folder_of[@]}" | sort); do
-  if [ ${#only[@]} -gt 0 ]; then
-    wanted=0
-    for want in "${only[@]}"; do
-      [ "$want" = "$name" ] || [ "$want" = "$(basename "${folder_of[$name]}")" ] && wanted=1
-    done
-    [ $wanted -eq 1 ] || continue
-  fi
+  wanted "$name" "$(basename "${folder_of[$name]}")" || continue
   names+=("$name")
 done
 if [ ${#names[@]} -eq 0 ]; then
@@ -131,9 +115,6 @@ problems() {
     END { flush() }
   ' "$1"
 }
-
-# minutes and seconds
-duration() { printf '%dm%02ds' $(($1 / 60)) $(($1 % 60)); }
 
 echo "Checking ${#names[@]} package(s) of $root; logs in $out"
 for dup in "${duplicates[@]}"; do echo "Skipped ${dup}"; done

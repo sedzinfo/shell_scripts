@@ -1,0 +1,3 @@
+# The scripts load lib/helpers.sh. Follow it, as shellcheck -x does, so that the colours
+# and functions it defines are known in every script.
+external-sources=true

@@ -11,35 +11,8 @@ param(
   [string]$Repo = '.'
 )
 
-# anything but y/yes is no
-function Test-Yes([string]$question) {
-  $answer = Read-Host "$question [y/N]"
-  return $answer -match '^\s*y(es)?\s*$'
-}
-
-# installs a missing program with winget, without asking (its installer may ask for
-# administrator approval). A new program is on the PATH of new windows only: this one gets
-# it too. Nothing happens where winget is missing
-function Install-Program([string]$package) {
-  if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { return }
-  Write-Host "Installing $package with winget ..."
-  winget install --id $package --exact --source winget --silent --accept-package-agreements --accept-source-agreements
-  $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
-}
-
-# Rscript: on the PATH, or where the R installer put it, as it does not add R to the PATH
-function Find-Rscript {
-  $command = Get-Command Rscript -ErrorAction SilentlyContinue
-  if ($command) { return $command.Source }
-  foreach ($key in 'HKCU:\SOFTWARE\R-core\R', 'HKLM:\SOFTWARE\R-core\R') {
-    $path = (Get-ItemProperty -Path $key -ErrorAction SilentlyContinue).InstallPath
-    if ($path -and (Test-Path -LiteralPath "$path\bin\Rscript.exe")) { return "$path\bin\Rscript.exe" }
-  }
-  # the newest R in Program Files
-  Get-ChildItem "$env:ProgramFiles\R\R-*\bin\Rscript.exe" -ErrorAction SilentlyContinue |
-    Sort-Object { [version]($_.Directory.Parent.Name -replace '^R-', '' -replace '[^0-9.]', '') } |
-    Select-Object -Last 1 -ExpandProperty FullName
-}
+# the functions that several scripts share
+try { . "$PSScriptRoot/lib/helpers.ps1" } catch { Write-Host $_; exit 1 }
 
 # ask for the repository until one that exists is given (~ works, and the quotes of "Copy as path")
 $Repo = $Repo.Trim().Trim('"') -replace '^~', $HOME

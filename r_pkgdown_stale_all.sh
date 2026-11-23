@@ -16,6 +16,10 @@
 # The folder is given as a path (~/GitHub, ., ../work): a plain word is a package. The exit
 # code is 1 if any site is stale, never built or not pushed.
 
+# the functions that several scripts share
+# shellcheck source-path=SCRIPTDIR
+. "$(dirname "${BASH_SOURCE[0]}")/lib/helpers.sh" || exit 1
+
 root="$HOME/GitHub"; only=(); root_given=0
 for arg in "$@"; do
   case "$arg" in
@@ -29,16 +33,9 @@ for arg in "$@"; do
       fi ;;
   esac
 done
-# ask for the folder until one that exists is given (Tab completes paths, ~ works)
-while [ ! -d "$root" ]; do
-  echo "Folder not found: $root"
-  read -e -r -p "Folder with the repositories (empty to quit): " root || exit 1
-  [ -z "$root" ] && exit 1
-  root="${root/#\~/$HOME}"
-done
+ask_folder
 root=$(cd "$root" && pwd)
 
-red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; reset=$'\e[0m'
 sources=(R man README.md DESCRIPTION NEWS.md _pkgdown.yml pkgdown vignettes)
 when() { date -d "@$1" '+%d/%m/%Y %H:%M'; }
 
@@ -47,10 +44,7 @@ while IFS= read -r yml; do
   dir=$(dirname "$yml"); label="${dir#"$root"/}"
   name=$(awk -F': *' '$1 == "Package" { sub(/[ \t\r]+$/, "", $2); print $2; exit }' "$dir/DESCRIPTION" 2> /dev/null)
   [ -n "$name" ] || continue
-  if [ ${#only[@]} -gt 0 ]; then
-    wanted=0; for want in "${only[@]}"; do [ "$want" = "$name" ] || [ "$want" = "$(basename "$dir")" ] && wanted=1; done
-    [ $wanted -eq 1 ] || continue
-  fi
+  wanted "$name" "$(basename "$dir")" || continue
   checked=$((checked + 1))
   # the folder the site is built into: destination in _pkgdown.yml, or docs
   dest=$(awk -F': *' '/^destination:/ { gsub(/["'\''\r]/, "", $2); sub(/[ \t]+#.*$/, "", $2); print $2; exit }' "$yml")

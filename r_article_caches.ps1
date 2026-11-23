@@ -30,35 +30,8 @@ param(
   [switch]$Yes
 )
 
-# anything but y/yes is no
-function Test-Yes([string]$question) {
-  $answer = Read-Host "$question [y/N]"
-  return $answer -match '^\s*y(es)?\s*$'
-}
-
-# installs a missing program with winget, without asking (its installer may ask for
-# administrator approval). A new program is on the PATH of new windows only: this one gets
-# it too. Nothing happens where winget is missing
-function Install-Program([string]$package) {
-  if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { return }
-  Write-Host "Installing $package with winget ..."
-  winget install --id $package --exact --source winget --silent --accept-package-agreements --accept-source-agreements
-  $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
-}
-
-# Rscript: on the PATH, or where the R installer put it (the registry, or Program Files)
-function Find-Rscript {
-  $command = Get-Command Rscript -ErrorAction SilentlyContinue
-  if ($command) { return $command.Source }
-  foreach ($key in 'HKCU:\SOFTWARE\R-core\R', 'HKLM:\SOFTWARE\R-core\R') {
-    $path = (Get-ItemProperty -Path $key -ErrorAction SilentlyContinue).InstallPath
-    if ($path -and (Test-Path -LiteralPath "$path\bin\Rscript.exe")) { return "$path\bin\Rscript.exe" }
-  }
-  # the newest R in Program Files
-  Get-ChildItem "$env:ProgramFiles\R\R-*\bin\Rscript.exe" -ErrorAction SilentlyContinue |
-    Sort-Object { [version]($_.Directory.Parent.Name -replace '^R-', '' -replace '[^0-9.]', '') } |
-    Select-Object -Last 1 -ExpandProperty FullName
-}
+# the functions that several scripts share
+try { . "$PSScriptRoot/lib/helpers.ps1" } catch { Write-Host $_; exit 1 }
 
 if ($Clean -and $Accept) { Write-Host 'Either -Clean or -Accept, not both'; exit 1 }
 if ($Clean) { $mode = 'clean' } elseif ($Accept) { $mode = 'accept' } else { $mode = 'report' }
@@ -99,21 +72,6 @@ if (-not $rscript) {
   $rscript = Find-Rscript
   if (-not $rscript) {
     Write-Host 'Install it from https://cran.r-project.org/ or with: winget install RProject.R'; exit 1
-  }
-}
-
-# the part of a path inside the folder, as rwf\rwf
-function Get-Relative([string]$path) {
-  if ($path.StartsWith($Root + [IO.Path]::DirectorySeparatorChar)) { return $path.Substring($Root.Length + 1) }
-  return $path
-}
-
-# the value of a field of a DESCRIPTION file, as Package
-function Get-Field([string]$description, [string[]]$fields) {
-  foreach ($line in Get-Content -LiteralPath $description) {
-    foreach ($field in $fields) {
-      if ($line -cmatch "^${field}:\s*(.*?)\s*$") { return $Matches[1] }
-    }
   }
 }
 

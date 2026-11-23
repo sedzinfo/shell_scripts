@@ -38,22 +38,8 @@ for arg in "$@"; do
   esac
 done
 
-# ask for the folder until one that exists is given (Tab completes paths, ~ works)
-while [ ! -d "$root" ]; do
-  echo "Folder not found: $root"
-  read -e -r -p "Folder with the repositories (empty to quit): " root || exit 1
-  [ -z "$root" ] && exit 1
-  root="${root/#\~/$HOME}"
-done
+ask_folder
 root=$(cd "$root" && pwd)
-
-red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; bold=$'\e[1m'; reset=$'\e[0m'
-
-yes_no() {
-  local answer
-  read -r -p "$1 [y/N]: " answer
-  [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]
-}
 
 # R and roxygen2 are needed, so without them it stops
 check_packages 'Rscript:r-base-dev:runs R'
@@ -78,24 +64,15 @@ uses_roxygen() {
 dirs=(); no_roxygen=()
 while IFS= read -r description; do
   dir=$(dirname "$description")
-  # without the \r of a DESCRIPTION saved on Windows
-  name=$(awk -F': *' '$1 == "Package" { sub(/[ \t\r]+$/, "", $2); print $2; exit }' "$description")
+  name=$(package_name "$description")
   [ -n "$name" ] || continue
-  if [ ${#only[@]} -gt 0 ]; then
-    wanted=0
-    for want in "${only[@]}"; do
-      [ "$want" = "$name" ] || [ "$want" = "$(basename "$dir")" ] && wanted=1
-    done
-    [ $wanted -eq 1 ] || continue
-  fi
+  wanted "$name" "$(basename "$dir")" || continue
   if uses_roxygen "$dir"; then
     dirs+=("$dir")
   else
     no_roxygen+=("${dir#"$root"/}")
   fi
-done < <(find "$root" -maxdepth 3 \
-           \( -name .git -o -name '*.Rcheck' -o -name renv -o -name venv -o -name .venv -o -name node_modules \) -prune \
-           -o -name DESCRIPTION -type f -print | sort)
+done < <(package_files "$root")
 if [ ${#dirs[@]} -eq 0 ]; then
   echo "No R packages with roxygen comments${only[*]:+ named ${only[*]}} in $root"
   exit 1
@@ -120,9 +97,6 @@ trap 'exit 130' INT TERM
 for old in "$out"/copy.?*; do
   [ -d "$old" ] && rm -rf -- "$old"
 done
-
-# minutes and seconds
-duration() { printf '%dm%02ds' $(($1 / 60)) $(($1 % 60)); }
 
 # a checksum per file roxygen writes: the help pages, NAMESPACE and DESCRIPTION.
 # With --check the roxygen2 version in DESCRIPTION is left out: roxygen updates it

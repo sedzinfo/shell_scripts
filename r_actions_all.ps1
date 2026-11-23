@@ -23,6 +23,9 @@ param(
   [string[]]$Names
 )
 
+# the functions that several scripts share
+try { . "$PSScriptRoot/lib/helpers.ps1" } catch { Write-Host $_; exit 1 }
+
 # installs the programs this script needs, when they are missing, with winget and without
 # asking (an installer may ask for administrator approval). Each argument is
 # program:package:what it is for. Where winget is missing it only says what to install
@@ -80,19 +83,6 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) { exit 1 }
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 # no progress bar for each answer, which slows Windows PowerShell down
 $ProgressPreference = 'SilentlyContinue'
-
-# the part of a path inside the folder, as rwf\rwf
-function Get-Relative([string]$path) {
-  if ($path.StartsWith($Root + [IO.Path]::DirectorySeparatorChar)) { return $path.Substring($Root.Length + 1) }
-  return $path
-}
-
-# the value of a field of a DESCRIPTION file, as Package or Version
-function Get-Field([string]$description, [string]$field) {
-  foreach ($line in Get-Content -LiteralPath $description) {
-    if ($line -match "^${field}:\s*(.*?)\s*$") { return $Matches[1] }
-  }
-}
 
 # the packages: their folders, names and the labels of the table (the folder, and the
 # package's name when it is not the folder's)

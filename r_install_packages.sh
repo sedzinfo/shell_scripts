@@ -15,12 +15,6 @@
 repo="${1:-.}"
 repo="${repo/#\~/$HOME}"
 
-yes_no() {
-  local answer
-  read -r -p "$1 [y/N]: " answer
-  [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]
-}
-
 # ask for the repository until one that exists is given (Tab completes paths, ~ works)
 while [ ! -d "$repo" ]; do
   echo "Folder not found: $repo"

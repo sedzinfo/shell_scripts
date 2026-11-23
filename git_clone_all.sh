@@ -18,13 +18,7 @@ esac
 root="${1:-$HOME/GitHub}"
 user="${2:-sedzinfo}"
 
-# ask for the folder until one that exists is given (Tab completes paths, ~ works)
-while [ ! -d "$root" ]; do
-  echo "Folder not found: $root"
-  read -e -r -p "Folder to clone into (empty to quit): " root || exit 1
-  [ -z "$root" ] && exit 1
-  root="${root/#\~/$HOME}"
-done
+ask_folder "Folder to clone into"
 
 # curl and jq are needed, so without them it stops
 check_packages 'curl:curl:asks GitHub for the list' 'jq:jq:reads that list'

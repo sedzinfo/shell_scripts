@@ -13,6 +13,10 @@
 #   machine_leave.sh [folder] [user]     default ~/GitHub and sedzinfo
 #   machine_leave.sh --check             only the report, nothing is removed
 
+# the functions that several scripts share
+# shellcheck source-path=SCRIPTDIR
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/helpers.sh" || exit 1
+
 root="$HOME/GitHub"; user="sedzinfo"; check=0; positional=()
 for arg in "$@"; do
   case "$arg" in
@@ -24,17 +28,10 @@ done
 [ ${#positional[@]} -ge 1 ] && root="${positional[0]/#\~/$HOME}"
 [ ${#positional[@]} -ge 2 ] && user="${positional[1]}"
 
-# ask for the folder until one that exists is given (Tab completes paths, ~ works)
-while [ ! -d "$root" ]; do
-  echo "Folder not found: $root"
-  read -e -r -p "Folder with the repositories (empty to quit): " root || exit 1
-  [ -z "$root" ] && exit 1
-  root="${root/#\~/$HOME}"
-done
-
-red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; bold=$'\e[1m'; reset=$'\e[0m'
+ask_folder
 
 # anything but y/yes is no; with --check nothing is asked, so nothing is removed
+# (this yes_no replaces the one of lib/helpers.sh)
 yes_no() {
   local answer
   [ $check -eq 1 ] && return 1

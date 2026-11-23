@@ -28,6 +28,9 @@ param(
   [switch]$Yes
 )
 
+# the functions that several scripts share
+try { . "$PSScriptRoot/lib/helpers.ps1" } catch { Write-Host $_; exit 1 }
+
 $stepsAll = 'document', 'install', 'check', 'pkgdown', 'manifests', 'pdf', 'tarball'
 # -Skip check,pdf and -Skip check -Skip pdf both work
 $Skip = @($Skip | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
@@ -37,26 +40,6 @@ foreach ($name in $Skip + $Only) {
 }
 $steps = @($stepsAll | Where-Object { ($Only.Count -eq 0 -or $_ -in $Only) -and $_ -notin $Skip })
 if ($steps.Count -eq 0) { Write-Host 'No steps left to run'; exit 1 }
-
-# anything but y/yes is no
-function Test-Yes([string]$question) {
-  $answer = Read-Host "$question [y/N]"
-  return $answer -match '^\s*y(es)?\s*$'
-}
-
-# Rscript: on the PATH, or where the R installer put it, as it does not add R to the PATH
-function Find-Rscript {
-  $command = Get-Command Rscript -ErrorAction SilentlyContinue
-  if ($command) { return $command.Source }
-  foreach ($key in 'HKCU:\SOFTWARE\R-core\R', 'HKLM:\SOFTWARE\R-core\R') {
-    $path = (Get-ItemProperty -Path $key -ErrorAction SilentlyContinue).InstallPath
-    if ($path -and (Test-Path -LiteralPath "$path\bin\Rscript.exe")) { return "$path\bin\Rscript.exe" }
-  }
-  # the newest R in Program Files
-  Get-ChildItem "$env:ProgramFiles\R\R-*\bin\Rscript.exe" -ErrorAction SilentlyContinue |
-    Sort-Object { [version]($_.Directory.Parent.Name -replace '^R-', '' -replace '[^0-9.]', '') } |
-    Select-Object -Last 1 -ExpandProperty FullName
-}
 
 # the folder is given as a path: a plain word is a package, as a package's name may also be a
 # folder here
@@ -92,17 +75,6 @@ if (-not $rscript) { Write-Host 'R is needed: winget install RProject.R'; exit 1
 $r = Join-Path (Split-Path -Parent $rscript) 'R.exe'
 if (-not (Test-Path -LiteralPath $r)) { $r = Join-Path (Split-Path -Parent $rscript) 'R' }
 
-# the part of a path inside the folder, as rwf\rwf
-function Get-Relative([string]$path) {
-  if ($path.StartsWith($Root + [IO.Path]::DirectorySeparatorChar)) { return $path.Substring($Root.Length + 1) }
-  return $path
-}
-# the value of a field of a DESCRIPTION file, as Package
-function Get-Field([string]$dir, [string]$field) {
-  foreach ($line in Get-Content -LiteralPath (Join-Path $dir 'DESCRIPTION')) {
-    if ($line -cmatch "^${field}:\s*(.*?)\s*$") { return $Matches[1] }
-  }
-}
 # the top of the repository a package is in
 function Get-Top([string]$dir) {
   $top = git -C $dir rev-parse --show-toplevel 2> $null
@@ -117,7 +89,7 @@ $descriptions = Get-ChildItem -LiteralPath $Root -Recurse -Depth 2 -Filter DESCR
   Sort-Object FullName
 foreach ($description in $descriptions) {
   $dir = $description.DirectoryName
-  $name = Get-Field $dir 'Package'
+  $name = Get-Field (Join-Path $dir 'DESCRIPTION') 'Package'
   if (-not $name) { continue }
   if ($onlyNames.Count -gt 0) {
     $folder = Split-Path -Leaf $dir
@@ -203,7 +175,7 @@ foreach ($step in $steps) {
         $log = Join-Path $out ('install_' + ($label -replace '[\\/]', '_') + '.log')
         Write-Host ('  {0,-32}' -f $label) -NoNewline
         if ((Invoke-RCmd $log @('INSTALL', $dir)) -eq 0) {
-          Write-Host " installed $(Get-Field $dir 'Version')" -ForegroundColor Green
+          Write-Host " installed $(Get-Field (Join-Path $dir 'DESCRIPTION') 'Version')" -ForegroundColor Green
         } else {
           Show-LogEnd $log; $status = 1
         }
@@ -212,7 +184,7 @@ foreach ($step in $steps) {
     'tarball' {
       foreach ($dir in $dirs) {
         $label = Get-Relative $dir
-        $name = Get-Field $dir 'Package'
+        $name = Get-Field (Join-Path $dir 'DESCRIPTION') 'Package'
         $log = Join-Path $out ('tarball_' + ($label -replace '[\\/]', '_') + '.log')
         # at the top of the repository, as generate_package.R and the build-tarball workflows
         # put it, replacing the tarballs of older versions

@@ -24,6 +24,9 @@ param(
   [switch]$Yes
 )
 
+# the functions that several scripts share
+try { . "$PSScriptRoot/lib/helpers.ps1" } catch { Write-Host $_; exit 1 }
+
 # the folder is given as a path: a plain word is a repository, as a repository's name may
 # also be a folder here
 $Root = $null; $only = @()
@@ -51,32 +54,10 @@ while (-not (Test-Path -LiteralPath $Root -PathType Container)) {
 }
 $Root = (Resolve-Path -LiteralPath $Root).ProviderPath.TrimEnd('\', '/')
 
-# installs a missing program with winget, without asking (its installer may ask for
-# administrator approval). A new program is on the PATH of new windows only: this one gets
-# it too. Nothing happens where winget is missing
-function Install-Program([string]$package) {
-  if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { return }
-  Write-Host "Installing $package with winget ..."
-  winget install --id $package --exact --source winget --silent --accept-package-agreements --accept-source-agreements
-  $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
-}
-
 # git is needed, so without it it stops
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) { Install-Program 'Git.Git' }
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
   Write-Host 'git is needed: winget install Git.Git'; exit 1
-}
-
-# anything but y/yes is no
-function Test-Yes([string]$question) {
-  $answer = Read-Host "$question [y/N]"
-  return $answer -match '^\s*y(es)?\s*$'
-}
-
-# minutes and seconds since a time
-function Get-Duration([datetime]$since) {
-  $seconds = [int]((Get-Date) - $since).TotalSeconds
-  return '{0}m{1:00}s' -f [math]::Floor($seconds / 60), ($seconds % 60)
 }
 
 # a line of the summary: repository, time, result

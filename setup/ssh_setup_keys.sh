@@ -57,14 +57,6 @@ if [ ! -f "$file" ]; then
   exit 1
 fi
 
-red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; bold=$'\e[1m'; reset=$'\e[0m'
-
-yes_no() {
-  local answer
-  read -r -p "$1 [y/N]: " answer
-  [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]
-}
-
 for program in ssh ssh-keygen ssh-copy-id; do
   command -v "$program" > /dev/null || { echo "$program is needed (sudo apt install openssh-client)"; exit 1; }
 done

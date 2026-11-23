@@ -21,6 +21,10 @@
 # The folder is given as a path (~/GitHub, ., ../work): a plain word is a package.
 # A step that fails does not stop the others. The exit code is 1 if any step failed.
 
+# the functions that several scripts share
+# shellcheck source-path=SCRIPTDIR
+. "$(dirname "${BASH_SOURCE[0]}")/lib/helpers.sh" || exit 1
+
 steps_all=(document install check pkgdown manifests pdf tarball)
 root="$HOME/GitHub"; yes=0; only=(); root_given=0; skip=""; only_steps=""; next=""
 for arg in "$@"; do
@@ -55,42 +59,22 @@ for step in "${steps_all[@]}"; do
 done
 [ ${#steps[@]} -eq 0 ] && { echo "No steps left to run"; exit 1; }
 
-# ask for the folder until one that exists is given (Tab completes paths, ~ works)
-while [ ! -d "$root" ]; do
-  echo "Folder not found: $root"
-  read -e -r -p "Folder with the repositories (empty to quit): " root || exit 1
-  [ -z "$root" ] && exit 1
-  root="${root/#\~/$HOME}"
-done
+ask_folder
 root=$(cd "$root" && pwd)
 here=$(cd "$(dirname "$0")" && pwd)
 
-red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; bold=$'\e[1m'; reset=$'\e[0m'
 banner() { printf '\n%s%s%s\n' "$bold" "$(printf '=%.0s' {1..80})" "$reset"; printf '%s%s%s\n' "$bold" "$1" "$reset"; }
-yes_no() {
-  local answer
-  read -r -p "$1 [y/N]: " answer
-  [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]
-}
 command -v R > /dev/null || { echo "R is needed (sudo apt install r-base-core)"; exit 1; }
 
 # the packages: every folder with a DESCRIPTION, as the step scripts find them
 dirs=()
 while IFS= read -r description; do
   dir=$(dirname "$description")
-  name=$(awk -F': *' '$1 == "Package" { sub(/[ \t\r]+$/, "", $2); print $2; exit }' "$description")
+  name=$(package_name "$description")
   [ -n "$name" ] || continue
-  if [ ${#only[@]} -gt 0 ]; then
-    wanted=0
-    for want in "${only[@]}"; do
-      [ "$want" = "$name" ] || [ "$want" = "$(basename "$dir")" ] && wanted=1
-    done
-    [ $wanted -eq 1 ] || continue
-  fi
+  wanted "$name" "$(basename "$dir")" || continue
   dirs+=("$dir")
-done < <(find "$root" -maxdepth 3 \
-           \( -name .git -o -name '*.Rcheck' -o -name renv -o -name venv -o -name .venv -o -name node_modules \) -prune \
-           -o -name DESCRIPTION -type f -print | sort)
+done < <(package_files "$root")
 if [ ${#dirs[@]} -eq 0 ]; then
   echo "No R packages${only[*]:+ named ${only[*]}} in $root"; exit 1
 fi

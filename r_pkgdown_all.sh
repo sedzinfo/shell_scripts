@@ -35,22 +35,8 @@ for arg in "$@"; do
   esac
 done
 
-# ask for the folder until one that exists is given (Tab completes paths, ~ works)
-while [ ! -d "$root" ]; do
-  echo "Folder not found: $root"
-  read -e -r -p "Folder with the repositories (empty to quit): " root || exit 1
-  [ -z "$root" ] && exit 1
-  root="${root/#\~/$HOME}"
-done
+ask_folder
 root=$(cd "$root" && pwd)
-
-red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; bold=$'\e[1m'; reset=$'\e[0m'
-
-yes_no() {
-  local answer
-  read -r -p "$1 [y/N]: " answer
-  [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]
-}
 
 # R and pkgdown are needed, so without them it stops; pandoc renders the articles
 check_packages 'Rscript:r-base-dev:runs R' 'pandoc:pandoc:the articles (vignettes)'
@@ -75,23 +61,15 @@ config_of() {
 dirs=(); no_config=()
 while IFS= read -r description; do
   dir=$(dirname "$description")
-  name=$(awk -F': *' '$1 == "Package" { sub(/[ \t\r]+$/, "", $2); print $2; exit }' "$description")
+  name=$(package_name "$description")
   [ -n "$name" ] || continue
-  if [ ${#only[@]} -gt 0 ]; then
-    wanted=0
-    for want in "${only[@]}"; do
-      [ "$want" = "$name" ] || [ "$want" = "$(basename "$dir")" ] && wanted=1
-    done
-    [ $wanted -eq 1 ] || continue
-  fi
+  wanted "$name" "$(basename "$dir")" || continue
   if [ -z "$(config_of "$dir")" ]; then
     no_config+=("${dir#"$root"/}")
   else
     dirs+=("$dir")
   fi
-done < <(find "$root" -maxdepth 3 \
-           \( -name .git -o -name '*.Rcheck' -o -name renv -o -name venv -o -name .venv -o -name node_modules \) -prune \
-           -o -name DESCRIPTION -type f -print | sort)
+done < <(package_files "$root")
 if [ ${#dirs[@]} -eq 0 ]; then
   echo "No R packages with a _pkgdown.yml${only[*]:+ named ${only[*]}} in $root"
   [ ${#no_config[@]} -gt 0 ] && echo "Without one: ${no_config[*]} (pkgdown::use_pkgdown() sets one up)"
@@ -100,9 +78,6 @@ fi
 
 out="${XDG_CACHE_HOME:-$HOME/.cache}/r_pkgdown_all"
 mkdir -p "$out"
-
-# minutes and seconds
-duration() { printf '%dm%02ds' $(($1 / 60)) $(($1 % 60)); }
 
 echo "Building ${#dirs[@]} site(s) in $root; logs in $out"
 # the question before anything is written

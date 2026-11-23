@@ -25,8 +25,6 @@ for arg in "$@"; do
   esac
 done
 
-red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; bold=$'\e[1m'; reset=$'\e[0m'
-
 # Linux Mint has its own release names and numbers (zena, 22.3); CRAN, Posit and
 # Microsoft publish for the Ubuntu release Mint is built on (noble, 24.04)
 [ -r /etc/os-release ] && . /etc/os-release
@@ -77,13 +75,6 @@ vscode_extensions=(anthropic.claude-code davidanson.vscode-markdownlint intellic
   ms-vscode-remote.remote-ssh ms-vscode-remote.remote-ssh-edit ms-vscode.makefile-tools ms-vscode.powershell
   ms-vscode.remote-explorer ms-vscode.remote-server qingpeng.common-lisp reditorsupport.r
   reditorsupport.r-syntax tomoki1207.pdf xdebug.php-debug)
-
-# anything but y/yes is no
-yes_no() {
-  local answer
-  read -r -p "$1 [y/N]: " answer
-  [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]
-}
 
 # apt without questions (the few it would ask are answered first with preseed;
 # changed configuration files are kept), waiting up to 2 minutes while the

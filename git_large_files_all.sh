@@ -38,16 +38,8 @@ if ! min=$(LC_ALL=C numfmt --from=iec "${size^^}" 2> /dev/null) || [ "$min" -lt 
   echo "--size takes a size such as 20M or 50M, not: $size"; exit 1
 fi
 
-# ask for the folder until one that exists is given (Tab completes paths, ~ works)
-while [ ! -d "$root" ]; do
-  echo "Folder not found: $root"
-  read -e -r -p "Folder with the repositories (empty to quit): " root || exit 1
-  [ -z "$root" ] && exit 1
-  root="${root/#\~/$HOME}"
-done
+ask_folder
 root=$(cd "$root" && pwd)
-
-red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; bold=$'\e[1m'; reset=$'\e[0m'
 
 # GitHub refuses a push with a file over 100 MB (100 MiB)
 limit=$((100 * 1048576))
@@ -84,11 +76,7 @@ for dir in "$root"/*/; do
   dir=${dir%/}
   [ -e "$dir/.git" ] || continue
   repo=$(basename "$dir")
-  if [ ${#only[@]} -gt 0 ]; then
-    wanted=0
-    for want in "${only[@]}"; do [ "$want" = "$repo" ] && wanted=1; done
-    [ $wanted -eq 1 ] || continue
-  fi
+  wanted "$repo" || continue
   checked=$((checked + 1))
   branch=$(git -C "$dir" rev-parse --abbrev-ref HEAD 2> /dev/null)
   findings=(); hints=(); refused=0; warned=0; lfs_note=""; biggest=()

@@ -13,6 +13,10 @@
 # r_shiny_update_manifests.sh <app> writes the manifest anew. The folder is given as a path
 # (~/GitHub, ., ../work): a plain word is an app. The exit code is 1 if any app has a problem.
 
+# the functions that several scripts share
+# shellcheck source-path=SCRIPTDIR
+. "$(dirname "${BASH_SOURCE[0]}")/lib/helpers.sh" || exit 1
+
 root="$HOME/GitHub"; only=(); root_given=0
 for arg in "$@"; do
   case "$arg" in
@@ -26,16 +30,9 @@ for arg in "$@"; do
       fi ;;
   esac
 done
-# ask for the folder until one that exists is given (Tab completes paths, ~ works)
-while [ ! -d "$root" ]; do
-  echo "Folder not found: $root"
-  read -e -r -p "Folder with the repositories (empty to quit): " root || exit 1
-  [ -z "$root" ] && exit 1
-  root="${root/#\~/$HOME}"
-done
+ask_folder
 root=$(cd "$root" && pwd)
 
-red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; reset=$'\e[0m'
 # jq reads the manifest; it is offered when missing, as the other scripts do
 if ! command -v jq > /dev/null; then
   echo "Missing: jq (reads manifest.json), package jq"
@@ -50,10 +47,7 @@ problems=0; checked=0
 for dir in "$root"/*/; do
   dir=${dir%/}; app=$(basename "$dir")
   [ -f "$dir/manifest.json" ] || continue
-  if [ ${#only[@]} -gt 0 ]; then
-    wanted=0; for want in "${only[@]}"; do [ "$want" = "$app" ] && wanted=1; done
-    [ $wanted -eq 1 ] || continue
-  fi
+  wanted "$app" || continue
   checked=$((checked + 1))
   listed=$(jq -r '.files | keys[]' "$dir/manifest.json" | sort)
   # what the app needs: tracked files of R/ and inst/, and the files at the top a golem app runs from
