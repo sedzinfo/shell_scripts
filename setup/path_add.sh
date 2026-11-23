@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Adds the shell_scripts folder (the one above this setup folder) and its monitor folder to
-# your PATH, so that their scripts run by name from any folder: git_status_all.sh instead of
-# ~/GitHub/shell_scripts/git_status_all.sh, and hwrt.sh instead of
+# Adds the shell_scripts folder (the one above this setup folder) and its git, r and monitor
+# folders to your PATH, so that their scripts run by name from any folder: git_status_all.sh
+# instead of ~/GitHub/shell_scripts/git/git_status_all.sh, and hwrt.sh instead of
 # ~/GitHub/shell_scripts/monitor/hwrt.sh. The setup scripts, which are run once, stay off
 # the PATH. It adds one line to ~/.bashrc, which every new terminal reads (and to ~/.zshrc,
 # if there is one):
-#   export PATH="$HOME/GitHub/shell_scripts:$HOME/GitHub/shell_scripts/monitor:$PATH"
-# Running it again changes nothing; after an older run that added only the shell_scripts
-# folder, it adds a line with the monitor folder alone. A script cannot change the PATH of
+#   export PATH="$HOME/GitHub/shell_scripts:$HOME/GitHub/shell_scripts/git:...:$PATH"
+# Running it again changes nothing; after an older run that added only some of these
+# folders, it adds a line with the missing ones alone. A script cannot change the PATH of
 # the terminal it was started from: open a new one, or run  source ~/.bashrc  in it. To
 # undo it, delete the lines it added from ~/.bashrc.
 #   setup/path_add.sh
@@ -22,7 +22,9 @@ esac
 # setup/ (run once) and lib/ (loaded by the scripts, never run) stay off the PATH
 top=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 folders=("$top")
-[ -d "$top/monitor" ] && folders+=("$top/monitor")
+for sub in git r monitor; do
+  [ -d "$top/$sub" ] && folders+=("$top/$sub")
+done
 
 # a folder as the line writes it: with $HOME, when it is in the home folder
 written() {
@@ -31,7 +33,7 @@ written() {
 
 # whether a line of the file, not a comment, sets the PATH with the folder: written as it
 # is, with $HOME or with ~, and followed by : or " or the end of the line, so that the
-# shell_scripts folder is not taken for its monitor folder
+# shell_scripts folder is not taken for one of its folders
 listed_in() {
   local file=$1 folder=$2 line form comment='^[[:space:]]*#'
   local -a forms=("$folder" "$(written "$folder")")

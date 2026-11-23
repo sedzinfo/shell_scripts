@@ -1,11 +1,11 @@
-# Adds the shell_scripts folder (the one above this setup folder) and its monitor folder to
-# your PATH, so that their scripts run by name from any folder, in every new window:
-# git_status_all.ps1 instead of & "$HOME\Documents\GitHub\shell_scripts\git_status_all.ps1",
+# Adds the shell_scripts folder (the one above this setup folder) and its git, r and monitor
+# folders to your PATH, so that their scripts run by name from any folder, in every new window:
+# git_status_all.ps1 instead of & "$HOME\Documents\GitHub\shell_scripts\git\git_status_all.ps1",
 # and hwrt.ps1 instead of & "$HOME\Documents\GitHub\shell_scripts\monitor\hwrt.ps1". The
 # setup scripts, which are run once, stay off the PATH. The folders go at the end of the
 # PATH of your user (not the computer's, so no administrator rights are needed), and into
 # the PATH of this window too. Running it again changes nothing; after an older run that
-# added only the shell_scripts folder, it adds the monitor folder.
+# added only some of these folders, it adds the missing ones.
 #   setup\path_add.ps1
 # The other folders of the PATH stay as they were, also those written with a name such as
 # %USERPROFILE%. Programs that are already running, such as VS Code and the terminals it
@@ -18,8 +18,10 @@ if ($args.Count -gt 0) { Write-Host "Unknown argument: $($args[0]) (path_add.ps1
 # setup\ (run once) and lib\ (loaded by the bash scripts, never run) stay off the PATH
 $top = Split-Path -Parent $PSScriptRoot
 $folders = @($top)
-$monitor = Join-Path $top 'monitor'
-if (Test-Path -LiteralPath $monitor -PathType Container) { $folders += $monitor }
+foreach ($sub in 'git', 'r', 'monitor') {
+  $folder = Join-Path $top $sub
+  if (Test-Path -LiteralPath $folder -PathType Container) { $folders += $folder }
+}
 
 # the same folder, however it is written: with %USERPROFILE%, a \ at the end, other capitals
 function Get-Plain([string]$path) {

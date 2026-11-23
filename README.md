@@ -7,10 +7,15 @@ The git scripts work on `~/GitHub` by default; if that folder does not exist, th
 (`.ps1`); see [Windows](#windows).
 
 The scripts that are run once, to set up a computer or to leave it, are in [`setup/`](setup):
-`machine_new.sh`, `machine_leave.sh`, `ssh_setup_keys.sh` and `path_add.sh`. The scripts that
-watch the machine (`hwrt.sh`, `hwrt_pi.sh`, `disk_speed.sh`) are in [`monitor/`](monitor).
-`path_add.sh` puts this folder and `monitor/` on the PATH, so that the other scripts run by
-name from any folder; `setup/` stays off it, so its scripts are run with their path, such as
+`machine_new.sh`, `machine_leave.sh`, `ssh_setup_keys.sh` and `path_add.sh`. The scripts for
+git repositories (`git_*.sh`) are in [`git/`](git), those for R packages and Shiny apps
+(`r_*.sh`) in [`r/`](r), and those that watch the machine (`hwrt.sh`, `hwrt_pi.sh`,
+`disk_speed.sh`) in [`monitor/`](monitor); the rest stay in this folder. A new script in `git/`
+starts with `git_` and one in `r/` with `r_`: all these folders are on the PATH together, so
+two scripts with the same name would clash, and the shell would silently run the first one
+it finds. `path_add.sh` puts this folder, `git/`, `r/` and `monitor/` on the PATH, so that
+the other scripts run by name from any folder; `setup/` stays off it, so its scripts are run
+with their path, such as
 `~/GitHub/shell_scripts/setup/machine_new.sh`.
 
 The functions that several scripts share, such as the question that offers to install a
@@ -36,34 +41,34 @@ NVIDIA's are never offered.
 
 | Script | What it does |
 |---|---|
-| [`git_status_all.sh`](git_status_all.sh) | One line per repository: clean, or what is not yet on GitHub |
-| [`git_pull_all.sh`](git_pull_all.sh) | Pulls every repository |
-| [`git_clone_all.sh`](git_clone_all.sh) | Clones every repository of a GitHub user that is not downloaded yet |
-| [`git_push_checked.sh`](git_push_checked.sh) | Pushes what is not on GitHub yet, once R CMD check passes for each R package it changes |
-| [`git_actions_all.sh`](git_actions_all.sh) | The latest GitHub Actions run of every workflow of every repository, problems first, and which repositories have a problem |
+| [`git_status_all.sh`](git/git_status_all.sh) | One line per repository: clean, or what is not yet on GitHub |
+| [`git_pull_all.sh`](git/git_pull_all.sh) | Pulls every repository |
+| [`git_clone_all.sh`](git/git_clone_all.sh) | Clones every repository of a GitHub user that is not downloaded yet |
+| [`git_push_checked.sh`](git/git_push_checked.sh) | Pushes what is not on GitHub yet, once R CMD check passes for each R package it changes |
+| [`git_actions_all.sh`](git/git_actions_all.sh) | The latest GitHub Actions run of every workflow of every repository, problems first, and which repositories have a problem |
 | [`sites_check.sh`](sites_check.sh) | Checks that the websites, every page of their sitemaps, and the Shiny apps they link to are up, and that each app starts without errors |
-| [`git_large_files_all.sh`](git_large_files_all.sh) | Finds files that GitHub would refuse (over 100 MB) or warn about (over 50 MB), files that should be in Git LFS, and LFS files never downloaded |
-| [`git_lfs_prune_all.sh`](git_lfs_prune_all.sh) | Frees the space of the local copies of old Git LFS versions (`git lfs prune`), which GitHub keeps |
+| [`git_large_files_all.sh`](git/git_large_files_all.sh) | Finds files that GitHub would refuse (over 100 MB) or warn about (over 50 MB), files that should be in Git LFS, and LFS files never downloaded |
+| [`git_lfs_prune_all.sh`](git/git_lfs_prune_all.sh) | Frees the space of the local copies of old Git LFS versions (`git lfs prune`), which GitHub keeps |
 | [`hwrt.sh`](monitor/hwrt.sh) | Live view of RAM, CPU speed, GPU, temperatures and fans; beeps when RAM is low |
 | [`hwrt_pi.sh`](monitor/hwrt_pi.sh) | The same for a Raspberry Pi, plus the power supply (under-voltage, throttling) |
 | [`disk_speed.sh`](monitor/disk_speed.sh) | Read and write speed of every drive, on a PC or a Raspberry Pi |
-| [`r_shiny_update_manifests.sh`](r_shiny_update_manifests.sh) | Regenerates `manifest.json` of the Shiny apps for Posit Connect |
-| [`r_manifest_check_all.sh`](r_manifest_check_all.sh) | Checks that the `manifest.json` of every Shiny app lists every file the app needs, and only files that are on GitHub |
-| [`r_install_packages.sh`](r_install_packages.sh) | Installs the system and R packages a repository needs |
-| [`r_document_all.sh`](r_document_all.sh) | Updates the help pages and `NAMESPACE` of every R package from its roxygen comments; `--check` lists the ones out of date |
-| [`r_cmd_check.sh`](r_cmd_check.sh) | Runs R CMD check on every R package and reports which have errors, warnings or notes |
-| [`r_actions_all.sh`](r_actions_all.sh) | Whether the latest build and check of every R package on GitHub Actions went fine, and where a failed one failed |
-| [`r_pkgdown_all.sh`](r_pkgdown_all.sh) | Builds the pkgdown website of every R package and reports failed builds and failing examples |
-| [`r_pkgdown_stale_all.sh`](r_pkgdown_stale_all.sh) | Finds the pkgdown websites that are older than what they show (code, help pages, README), or built but not pushed |
-| [`r_pdf_all.sh`](r_pdf_all.sh) | Makes the PDF reference manual of every R package |
-| [`r_article_caches.sh`](r_article_caches.sh) | Finds the knitr caches of pkgdown articles that are older than the package functions they use |
-| [`r_build_all.sh`](r_build_all.sh) | Everything that makes an R package ready to push, step by step: help pages, install, R CMD check, website, manifests, PDF manual, tarball |
+| [`r_shiny_update_manifests.sh`](r/r_shiny_update_manifests.sh) | Regenerates `manifest.json` of the Shiny apps for Posit Connect |
+| [`r_manifest_check_all.sh`](r/r_manifest_check_all.sh) | Checks that the `manifest.json` of every Shiny app lists every file the app needs, and only files that are on GitHub |
+| [`r_install_packages.sh`](r/r_install_packages.sh) | Installs the system and R packages a repository needs |
+| [`r_document_all.sh`](r/r_document_all.sh) | Updates the help pages and `NAMESPACE` of every R package from its roxygen comments; `--check` lists the ones out of date |
+| [`r_cmd_check.sh`](r/r_cmd_check.sh) | Runs R CMD check on every R package and reports which have errors, warnings or notes |
+| [`r_actions_all.sh`](r/r_actions_all.sh) | Whether the latest build and check of every R package on GitHub Actions went fine, and where a failed one failed |
+| [`r_pkgdown_all.sh`](r/r_pkgdown_all.sh) | Builds the pkgdown website of every R package and reports failed builds and failing examples |
+| [`r_pkgdown_stale_all.sh`](r/r_pkgdown_stale_all.sh) | Finds the pkgdown websites that are older than what they show (code, help pages, README), or built but not pushed |
+| [`r_pdf_all.sh`](r/r_pdf_all.sh) | Makes the PDF reference manual of every R package |
+| [`r_article_caches.sh`](r/r_article_caches.sh) | Finds the knitr caches of pkgdown articles that are older than the package functions they use |
+| [`r_build_all.sh`](r/r_build_all.sh) | Everything that makes an R package ready to push, step by step: help pages, install, R CMD check, website, manifests, PDF manual, tarball |
 | [`setup/machine_new.sh`](setup/machine_new.sh) | Sets up a new computer with Linux Mint with the programs of the old one |
 | [`setup/machine_leave.sh`](setup/machine_leave.sh) | Before handing back a computer: checks that everything is on GitHub, then removes your repositories, GitHub key and logins |
 | [`tmux_update_plugins.sh`](tmux_update_plugins.sh) | Updates the tmux plugins (TPM) and repairs what copying their folder broke |
 | [`setup/ssh_setup_keys.sh`](setup/ssh_setup_keys.sh) | Sets up passwordless SSH logins to every machine of a list |
 | [`ssh_run_all.sh`](ssh_run_all.sh) | Runs a command on every machine of the same list, one after the other or all at once |
-| [`setup/path_add.sh`](setup/path_add.sh) | Adds this folder and `monitor/` to your PATH, so that their scripts run by name from any folder |
+| [`setup/path_add.sh`](setup/path_add.sh) | Adds this folder, `git/`, `r/` and `monitor/` to your PATH, so that their scripts run by name from any folder |
 
 ## git_status_all.sh
 
@@ -1018,18 +1023,18 @@ for a password.
 ~/GitHub/shell_scripts/setup/path_add.sh
 ```
 
-Adds the shell_scripts folder and its `monitor/` folder to your PATH, so that their scripts run
-by name from any folder: `git_status_all.sh` instead of `~/GitHub/shell_scripts/git_status_all.sh`,
-and `hwrt.sh` instead of `~/GitHub/shell_scripts/monitor/hwrt.sh`. It adds one line to
+Adds the shell_scripts folder and its `git/`, `r/` and `monitor/` folders to your PATH, so that
+their scripts run by name from any folder: `git_status_all.sh` instead of
+`~/GitHub/shell_scripts/git/git_status_all.sh`, and `hwrt.sh` instead of `~/GitHub/shell_scripts/monitor/hwrt.sh`. It adds one line to
 `~/.bashrc`, which every new terminal reads (and to `~/.zshrc`, if there is one):
 
 ```bash
-export PATH="$HOME/GitHub/shell_scripts:$HOME/GitHub/shell_scripts/monitor:$PATH"
+export PATH="$HOME/GitHub/shell_scripts:$HOME/GitHub/shell_scripts/git:$HOME/GitHub/shell_scripts/r:$HOME/GitHub/shell_scripts/monitor:$PATH"
 ```
 
 It adds the folder above `setup/`, wherever that is, and running it again changes nothing;
-after an older run that added only the shell_scripts folder, it adds a line with `monitor/`
-alone. A script cannot change the terminal it was started from: open a new one, or run
+after an older run that added only some of these folders (before `git/` and `r/` existed, for
+instance), it adds a line with the missing ones alone. A script cannot change the terminal it was started from: open a new one, or run
 `source ~/.bashrc` in it. To undo it, delete the lines it added from `~/.bashrc`.
 
 ## Windows
@@ -1038,7 +1043,7 @@ The `.ps1` scripts do the same as the bash ones, with the same arguments and que
 Windows PowerShell 5.1 (part of Windows) or PowerShell 7. Run them from PowerShell:
 
 ```powershell
-.\git_status_all.ps1 -NoFetch
+.\git\git_status_all.ps1 -NoFetch
 .\setup\machine_leave.ps1 -Check
 ```
 
@@ -1063,7 +1068,7 @@ What is different on Windows:
   for Windows, and say so when it is missing, without offering to install it.
 - `git_clone_all.ps1` needs only git, and clones over HTTPS, which git logs in to through the
   Git Credential Manager as GitHub Desktop does; `-Ssh` clones over SSH. For private
-  repositories: `$env:GITHUB_TOKEN = 'ghp_...'; .\git_clone_all.ps1; Remove-Item Env:GITHUB_TOKEN`.
+  repositories: `$env:GITHUB_TOKEN = 'ghp_...'; .\git\git_clone_all.ps1; Remove-Item Env:GITHUB_TOKEN`.
 - `hwrt.ps1` shows the RAM, the CPU speed (above the base speed when it boosts) and load, and
   how busy each GPU is, by name, with the temperature, speed and memory of NVIDIA cards
   (`nvidia-smi`). Windows itself reports only the temperatures of its ACPI thermal zones and no
@@ -1073,7 +1078,7 @@ What is different on Windows:
 - `sites_check.ps1` installs the R packages it needs into your R library, and opens the apps
   in Microsoft Edge when Chrome is not installed.
 - `r_actions_all.ps1` needs neither curl nor jq, as PowerShell asks GitHub itself. A token for
-  one run: `$env:GITHUB_TOKEN = 'ghp_...'; .\r_actions_all.ps1; Remove-Item Env:GITHUB_TOKEN`.
+  one run: `$env:GITHUB_TOKEN = 'ghp_...'; .\r\r_actions_all.ps1; Remove-Item Env:GITHUB_TOKEN`.
 - `r_install_packages.ps1` has no system packages to install, as R packages for Windows come
   ready built; only a package with C/C++ code needs
   [Rtools](https://cran.r-project.org/bin/windows/Rtools/) to be installed from source.
@@ -1122,8 +1127,8 @@ sudo apt install git                          # if git is not there yet
 git clone git@github.com:sedzinfo/shell_scripts.git ~/GitHub/shell_scripts
 ~/GitHub/shell_scripts/setup/machine_new.sh   # programs, R, drivers, apps
 ~/GitHub/shell_scripts/setup/path_add.sh      # run the scripts by name from any folder
-~/GitHub/shell_scripts/git_clone_all.sh       # download everything
-~/GitHub/shell_scripts/git_pull_all.sh        # later: keep it up to date
+~/GitHub/shell_scripts/git/git_clone_all.sh   # download everything
+git_pull_all.sh                               # later (new terminal): keep it up to date
 ```
 
 On Windows, in PowerShell:
@@ -1131,6 +1136,6 @@ On Windows, in PowerShell:
 ```powershell
 git clone https://github.com/sedzinfo/shell_scripts.git "$HOME\Documents\GitHub\shell_scripts"
 & "$HOME\Documents\GitHub\shell_scripts\setup\path_add.ps1"  # run them by name from any folder
-& "$HOME\Documents\GitHub\shell_scripts\git_clone_all.ps1"   # download everything
-& "$HOME\Documents\GitHub\shell_scripts\git_pull_all.ps1"    # later: keep it up to date
+& "$HOME\Documents\GitHub\shell_scripts\git\git_clone_all.ps1"  # download everything
+git_pull_all.ps1                                                  # later (new window): keep it up to date
 ```
