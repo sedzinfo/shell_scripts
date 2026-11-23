@@ -92,7 +92,7 @@ fi
 
 out="${XDG_CACHE_HOME:-$HOME/.cache}/r_build_all"
 mkdir -p "$out"
-echo "${#dirs[@]} package(s) in $root: $(for dir in "${dirs[@]}"; do printf '%s ' "${dir#"$root"/}"; done)"
+echo "${#dirs[@]} package(s) in $root: $(for dir in "${dirs[@]}"; do printf '%s ' "$(relative "$dir")"; done)"
 echo "Steps: ${steps[*]}"
 # the one question, before anything is written; the steps are then run with --yes
 if [ $yes -eq 0 ]; then
@@ -123,7 +123,7 @@ for step in "${steps[@]}"; do
     install|tarball)
       status=0
       for dir in "${dirs[@]}"; do
-        name=$(field "$dir" Package); label="${dir#"$root"/}"
+        name=$(field "$dir" Package); label="$(relative "$dir")"
         log="$out/${step}_${label//\//_}.log"
         if [ "$step" = install ]; then
           printf '  %-32s ' "$label"
@@ -140,7 +140,7 @@ for step in "${steps[@]}"; do
           rm -f "$top/${name}"_*.tar.gz
           if (cd "$top" && R CMD build --resave-data "$dir") > "$log" 2>&1; then
             tarball=$(ls "$top/${name}"_*.tar.gz 2> /dev/null | head -n 1)
-            echo "${green}${tarball#"$root"/}${reset} ($(du -h "$tarball" | cut -f1))"
+            echo "${green}$(relative "$tarball")${reset} ($(du -h "$tarball" | cut -f1))"
           else
             echo "${red}failed${reset}, the end of $log:"; tail -n 8 "$log" | sed 's/^/    /'; status=1
           fi
@@ -166,7 +166,7 @@ declare -A seen=()
 for dir in "${dirs[@]}"; do
   top=$(top_of "$dir"); [ -n "${seen[$top]}" ] && continue; seen[$top]=1
   changed=$(git -C "$top" status --porcelain 2> /dev/null | wc -l)
-  [ "$changed" -gt 0 ] && echo "  ${yellow}${top#"$root"/}${reset}: $changed changed file(s) to commit"
+  [ "$changed" -gt 0 ] && echo "  ${yellow}$(relative "$top")${reset}: $changed changed file(s) to commit"
 done
 echo "Logs of install and tarball in $out"
 exit $failed

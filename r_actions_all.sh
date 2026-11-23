@@ -46,13 +46,6 @@ root=$(cd "$root" && pwd)
 check_packages 'git:git:finds the repositories' 'curl:curl:asks GitHub for the runs' 'jq:jq:reads the answers'
 for program in git curl jq; do command -v "$program" > /dev/null || exit 1; done
 
-# colours on a terminal, not in the mail of cron
-if [ -t 1 ]; then
-  red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; grey=$'\e[90m'; reset=$'\e[0m'
-else
-  red=''; yellow=''; green=''; grey=''; reset=''
-fi
-
 # the packages: their folders, names and the labels of the table (the folder, and the
 # package's name when it is not the folder's)
 dirs=(); names=(); labels=(); width=7
@@ -61,8 +54,7 @@ while IFS= read -r description; do
   name=$(package_name "$description")
   [ -n "$name" ] || continue
   wanted "$name" "$(basename "$dir")" || continue
-  label="${dir#"$root"/}"
-  [ "$dir" = "$root" ] && label=$(basename "$dir")
+  label="$(relative "$dir")"
   [ "$(basename "$dir")" = "$name" ] || label="$label ($name)"
   dirs+=("$dir"); names+=("$name"); labels+=("$label")
   [ ${#label} -gt $width ] && width=${#label}
@@ -189,8 +181,7 @@ printf '%-*s  %-24s  %s\n' "$width" "package" "build" "check"
 declare -A branch_of=()
 problems=(); running=(); without_build=(); without_check=(); check_failed=0; seen=0
 for i in "${!dirs[@]}"; do
-  dir=${dirs[$i]}; short=${dirs[$i]#"$root"/}; details=()
-  [ "$dir" = "$root" ] && short=$(basename "$dir")
+  dir=${dirs[$i]}; short=$(relative "${dirs[$i]}"); details=()
   printf '%-*s  ' "$width" "${labels[$i]}"
 
   # the repository on GitHub, from its remote origin

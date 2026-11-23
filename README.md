@@ -23,7 +23,8 @@ of all of it: one copied on its own stops, saying that `lib/helpers.sh` (or
 Every script asks before it deletes, overwrites, pushes or installs anything, after
 showing what that is. Where a script has `--yes` (`-Yes` on Windows), that answers
 the question in advance; without a terminal to ask in (cron), such a script does
-nothing unless given `--yes`. A script that takes a folder and names (of
+nothing unless given `--yes`. Colours are used only on a terminal: in a file or the
+mail of cron the text is plain. A script that takes a folder and names (of
 repositories or packages) takes the folder as a path, such as `~/GitHub`, `.` or
 `../work`: a plain word is a name, even when a folder of that name is where it runs.
 

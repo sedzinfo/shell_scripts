@@ -76,7 +76,7 @@ mkdir -p "$out"
 echo "Making ${#dirs[@]} manual(s) of $root; logs in $out"
 # the question before anything is written
 if [ $yes -eq 0 ]; then
-  echo "The PDF manuals are written anew${to:+ in $to}, for: $(for dir in "${dirs[@]}"; do printf '%s ' "${dir#"$root"/}"; done)"
+  echo "The PDF manuals are written anew${to:+ in $to}, for: $(for dir in "${dirs[@]}"; do printf '%s ' "$(relative "$dir")"; done)"
   if [ ! -t 0 ]; then
     echo "Not a terminal, so nothing can be asked: add --yes to write them"; exit 1
   fi
@@ -86,7 +86,7 @@ fi
 failed=(); written=(); summary=()
 declare -A made_from=()
 for dir in "${dirs[@]}"; do
-  label=${dir#"$root"/}
+  label=$(relative "$dir")
   name=$(awk -F': *' '$1 == "Package" { sub(/[ \t\r]+$/, "", $2); print $2; exit }' "$dir/DESCRIPTION")
   log="$out/${label//\//_}.log"
   # in the --to folder one PDF per package is enough: a mirror repository of a
@@ -104,7 +104,7 @@ for dir in "${dirs[@]}"; do
   fi
   echo
   separator
-  echo "${bold}$name${reset}  ($label -> ${pdf#"$root"/})"
+  echo "${bold}$name${reset}  ($label -> $(relative "$pdf"))"
 
   # written now, and not an older PDF left as it was: Rd2pdf does not fail when it cannot
   # replace one (such as one open in a viewer that locks it)

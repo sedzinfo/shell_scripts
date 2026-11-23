@@ -54,10 +54,10 @@ while IFS= read -r description; do
   if [ -z "${folder_of[$name]:-}" ]; then
     folder_of[$name]=$dir
   elif [ "$(basename "$dir")" = "$name" ]; then
-    duplicates+=("${folder_of[$name]#"$root"/} (the same package as ${dir#"$root"/})")
+    duplicates+=("$(relative "${folder_of[$name]}") (the same package as $(relative "$dir"))")
     folder_of[$name]=$dir
   else
-    duplicates+=("${dir#"$root"/} (the same package as ${folder_of[$name]#"$root"/})")
+    duplicates+=("$(relative "$dir") (the same package as $(relative "${folder_of[$name]}"))")
   fi
 done < <(package_files "$root")
 
@@ -128,7 +128,7 @@ for name in "${names[@]}"; do
   echo
   separator
   version=$(awk -F': *' '$1 == "Version" { sub(/[ \t\r]+$/, "", $2); print $2; exit }' "$dir/DESCRIPTION")
-  echo "${bold}$name $version${reset}  (${dir#"$root"/})"
+  echo "${bold}$name $version${reset}  ($(relative "$dir"))"
   start=$SECONDS
 
   # the tarball CRAN would get: .Rbuildignore applied, vignettes built

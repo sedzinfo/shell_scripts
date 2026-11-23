@@ -65,7 +65,7 @@ while IFS= read -r description; do
   [ -n "$name" ] || continue
   wanted "$name" "$(basename "$dir")" || continue
   if [ -z "$(config_of "$dir")" ]; then
-    no_config+=("${dir#"$root"/}")
+    no_config+=("$(relative "$dir")")
   else
     dirs+=("$dir")
   fi
@@ -82,7 +82,7 @@ mkdir -p "$out"
 echo "Building ${#dirs[@]} site(s) in $root; logs in $out"
 # the question before anything is written
 if [ $yes -eq 0 ]; then
-  echo "Their sites are built anew: $(for dir in "${dirs[@]}"; do printf '%s ' "${dir#"$root"/}"; done)"
+  echo "Their sites are built anew: $(for dir in "${dirs[@]}"; do printf '%s ' "$(relative "$dir")"; done)"
   if [ ! -t 0 ]; then
     echo "Not a terminal, so nothing can be asked: add --yes to build them"; exit 1
   fi
@@ -92,7 +92,7 @@ fi
 
 failed=(); to_commit=(); example_errors=(); summary=()
 for dir in "${dirs[@]}"; do
-  label=${dir#"$root"/}
+  label=$(relative "$dir")
   name=$(awk -F': *' '$1 == "Package" { sub(/[ \t\r]+$/, "", $2); print $2; exit }' "$dir/DESCRIPTION")
   log="$out/${label//\//_}.log"
   # the site's folder: destination in _pkgdown.yml, relative to the package, or docs
@@ -100,7 +100,7 @@ for dir in "${dirs[@]}"; do
   site=$(cd "$dir" && realpath -m "${destination:-docs}")
   echo
   separator
-  echo "${bold}$name${reset}  ($label -> ${site#"$root"/})"
+  echo "${bold}$name${reset}  ($label -> $(relative "$site"))"
   start=$SECONDS
 
   # pkgdown installs the package in a temporary library and builds in a new R process

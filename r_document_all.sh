@@ -70,7 +70,7 @@ while IFS= read -r description; do
   if uses_roxygen "$dir"; then
     dirs+=("$dir")
   else
-    no_roxygen+=("${dir#"$root"/}")
+    no_roxygen+=("$(relative "$dir")")
   fi
 done < <(package_files "$root")
 if [ ${#dirs[@]} -eq 0 ]; then
@@ -141,7 +141,7 @@ else
   echo "Documenting ${#dirs[@]} package(s) in $root (roxygen2 $installed); logs in $out"
   # the question before anything is changed
   if [ $yes -eq 0 ]; then
-    echo "Their help pages and NAMESPACE are written anew: $(for dir in "${dirs[@]}"; do printf '%s ' "${dir#"$root"/}"; done)"
+    echo "Their help pages and NAMESPACE are written anew: $(for dir in "${dirs[@]}"; do printf '%s ' "$(relative "$dir")"; done)"
     if [ ! -t 0 ]; then
       echo "Not a terminal, so nothing can be asked: add --yes to update them"; exit 1
     fi
@@ -152,7 +152,7 @@ fi
 
 failed=(); out_of_date=(); to_commit=(); summary=()
 for dir in "${dirs[@]}"; do
-  label=${dir#"$root"/}
+  label=$(relative "$dir")
   name=$(awk -F': *' '$1 == "Package" { sub(/[ \t\r]+$/, "", $2); print $2; exit }' "$dir/DESCRIPTION")
   recorded=$(awk -F': *' '$1 == "Config/roxygen2/version" || $1 == "RoxygenNote" { sub(/[ \t\r]+$/, "", $2); print $2; exit }' "$dir/DESCRIPTION")
   log="$out/${label//\//_}.log"

@@ -41,7 +41,7 @@ when() { date -d "@$1" '+%d/%m/%Y %H:%M'; }
 
 attention=0; checked=0
 while IFS= read -r yml; do
-  dir=$(dirname "$yml"); label="${dir#"$root"/}"
+  dir=$(dirname "$yml"); label="$(relative "$dir")"
   name=$(awk -F': *' '$1 == "Package" { sub(/[ \t\r]+$/, "", $2); print $2; exit }' "$dir/DESCRIPTION" 2> /dev/null)
   [ -n "$name" ] || continue
   wanted "$name" "$(basename "$dir")" || continue

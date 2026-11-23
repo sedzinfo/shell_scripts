@@ -301,10 +301,10 @@ for i in "${!dirs[@]}"; do
   dir=${dirs[$i]}
   echo
   separator
-  echo "${bold}${dir#"$root"/}${reset}"
+  echo "${bold}$(relative "$dir")${reset}"
   if ! output=$(analyse "$dir" "$first" ""); then
     echo "  ${red}could not be read:${reset}"; echo "$output" | tail -n 5 | sed 's/^/    /'
-    failed+=("${dir#"$root"/}"); unread[$i]=1; continue
+    failed+=("$(relative "$dir")"); unread[$i]=1; continue
   fi
   while IFS=$'\t' read -r status article cached_at uses details; do
     [ -n "$article" ] || continue
@@ -343,7 +343,7 @@ if [ "$mode" = clean ]; then
       output=$(analyse "${dirs[$i]}" clean "${stale_of[$i]:-}") || continue
       while IFS=$'\t' read -r status article _; do
         if [[ "$status" == *+cleaned ]]; then
-          echo "  ${green}cache deleted${reset}: ${dirs[$i]#"$root"/}/$article"
+          echo "  ${green}cache deleted${reset}: $(relative "${dirs[$i]}")/$article"
           cleaned=$((cleaned + 1)); stale_left=$((stale_left - 1))
         fi
       done <<< "$output"
