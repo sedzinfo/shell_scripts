@@ -34,8 +34,8 @@ When a program a script needs is missing (`lm-sensors`, `alsa-utils`, `pciutils`
 stops, since it cannot work without `curl` and `jq`). Graphics drivers such as
 NVIDIA's are never offered.
 
-| Script | What it does | Changes anything? |
-|---|---|---|
+| Script | What it does |
+|---|---|
 | [`git_status_all.sh`](git_status_all.sh) | One line per repository: clean, or what is not yet on GitHub |
 | [`git_pull_all.sh`](git_pull_all.sh) | Pulls every repository |
 | [`git_clone_all.sh`](git_clone_all.sh) | Clones every repository of a GitHub user that is not downloaded yet |
