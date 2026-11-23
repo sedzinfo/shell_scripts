@@ -12,6 +12,10 @@
 # shellcheck source-path=SCRIPTDIR
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/helpers.sh" || exit 1
 
+case "${1:-}" in
+  -h|--help) sed -n '2,/^$/{s/^# \{0,1\}//;p}' "$0"; exit 0 ;;
+esac
+
 repo="${1:-.}"
 repo="${repo/#\~/$HOME}"
 
