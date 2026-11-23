@@ -18,6 +18,16 @@ ask_folder
 pulled=(); current=0; failed=()
 
 shopt -s dotglob
+# fetch first, all at once (8 at a time), the repositories the loop below would fetch: so
+# that a reset is offered only when GitHub could be reached
+to_fetch=()
+for dir in "$root"/*/; do
+  [ -e "$dir/.git" ] || continue
+  branch=$(git -C "$dir" symbolic-ref -q --short HEAD) || continue
+  [ -n "$(git -C "$dir" config "branch.$branch.merge")" ] && to_fetch+=("$dir")
+done
+fetch_all "${to_fetch[@]}"
+
 for dir in "$root"/*/; do
   [ -e "$dir/.git" ] || continue
   name=$(basename "$dir")
@@ -35,8 +45,10 @@ for dir in "$root"/*/; do
     failed+=("$name: no upstream branch")
     continue
   fi
-  # fetch first, so that a reset is offered only when GitHub could be reached
-  if ! git -C "$dir" fetch -q; then
+  # fetched above: what git said, and whether it could
+  fetch_result "$dir"
+  [ -n "$fetch_said" ] && printf '%s\n' "$fetch_said" >&2
+  if [ "$fetched" -eq 0 ]; then
     failed+=("$name: fetch failed (no connection?)")
     echo; continue
   fi

@@ -91,15 +91,27 @@ echo
 lines=()
 no_actions=()
 unreadable=()
-for repo in "${repos[@]}"; do
-  response=$(curl -fsS "${auth[@]}" "https://api.github.com/repos/$repo/actions/runs?per_page=100") ||
-    { unreadable+=("$repo"); continue; }
+# GitHub is asked about all the repositories at once (8 at a time); the answers wait in
+# files, read below in the order of the list
+answers=$(mktemp -d) || exit 1
+trap 'rm -rf "$answers"' EXIT
+ask_runs() {
+  curl -fsS "${auth[@]}" "https://api.github.com/repos/${repos[$1]}/actions/runs?per_page=100" \
+    > "$answers/$1" 2> "$answers/$1.err" || : > "$answers/$1.failed"
+}
+in_parallel ask_runs "${!repos[@]}"
+for i in "${!repos[@]}"; do
+  repo=${repos[$i]}
+  if [ -e "$answers/$i.failed" ]; then
+    cat "$answers/$i.err" >&2
+    unreadable+=("$repo"); continue
+  fi
   mapfile -t runs < <(jq -r --arg repo "$repo" '
     .workflow_runs | group_by(.path)[] | max_by(.created_at)
     | (.conclusion // .status) as $result
     | (if $result == "success" or $result == "skipped" or $result == "neutral" then 3
        elif .conclusion == null then 2 else 1 end) as $rank
-    | [$rank, $result, $repo, .name[:30], .head_branch[:16], .created_at[:10], .html_url] | @tsv' <<< "$response")
+    | [$rank, $result, $repo, .name[:30], .head_branch[:16], .created_at[:10], .html_url] | @tsv' < "$answers/$i")
   if [ ${#runs[@]} -eq 0 ]; then
     no_actions+=("$repo")
   else

@@ -97,3 +97,63 @@ check_packages() {
     echo "Install them with the package manager of this system: ${packages[*]}"
   fi
 }
+
+# runs a function once for each of the arguments, 8 at a time, each in the background,
+# and waits for all of them. What runs at the same time writes to files: printed, the
+# output of several would be mixed
+in_parallel() {
+  local fn=$1 arg
+  shift
+  for arg in "$@"; do
+    while [ "$(jobs -rp | wc -l)" -ge 8 ]; do sleep 0.1; done
+    "$fn" "$arg" &
+  done
+  wait
+}
+
+# fetches the repositories whose folders are given, 8 at a time and without asking
+# anything; then, one at a time, those that needed a password, a passphrase or a new
+# host key, where ssh and git can ask as usual. fetch_result then tells how each went.
+# On a terminal, a line says what is going on meanwhile
+fetch_folders=(); fetch_failed=(); fetch_says=()
+fetch_all() {
+  local i tmp indices=()
+  fetch_folders=("$@"); fetch_failed=(); fetch_says=()
+  [ $# -eq 0 ] && return 0
+  tmp=$(mktemp -d) || return 1
+  _fetch_into=$tmp
+  for ((i = 0; i < $#; i++)); do indices+=("$i"); done
+  [ -t 2 ] && printf 'Fetching %s repositories ...' "$#" >&2
+  in_parallel _fetch_quietly "${indices[@]}"
+  [ -t 2 ] && printf '\r\033[K' >&2
+  for ((i = 0; i < $#; i++)); do
+    if [ -e "$tmp/$i.failed" ] &&
+       grep -qE 'Permission denied|Host key verification failed|terminal prompts disabled|could not read (Username|Password)' "$tmp/$i"; then
+      # again, on its own, where ssh or git can ask
+      git -C "${fetch_folders[i]}" fetch -q 2> "$tmp/$i" && rm -f "$tmp/$i.failed"
+    fi
+    fetch_says[i]=$(cat "$tmp/$i")
+    [ -e "$tmp/$i.failed" ] && fetch_failed[i]=1
+  done
+  rm -rf "$tmp"
+}
+
+# in the background for fetch_all: the fetch of one repository, asking nothing
+_fetch_quietly() {
+  GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes" \
+    git -C "${fetch_folders[$1]}" fetch -q 2> "$_fetch_into/$1" || : > "$_fetch_into/$1.failed"
+}
+
+# how fetch_all went for a folder: sets fetched (1, or 0 when the fetch failed or the
+# folder was not given) and fetch_said (what git printed: errors, warnings)
+# shellcheck disable=SC2034 # fetched and fetch_said are for the scripts
+fetch_result() {
+  local i
+  fetched=0; fetch_said="not fetched"
+  for i in "${!fetch_folders[@]}"; do
+    [ "${fetch_folders[$i]}" = "$1" ] || continue
+    fetch_said=${fetch_says[$i]}
+    [ -n "${fetch_failed[$i]:-}" ] || fetched=1
+    return 0
+  done
+}

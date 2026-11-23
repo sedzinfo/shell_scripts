@@ -84,7 +84,9 @@ Shows, for each repository, its branch and one of:
   GitHub could not be reached, so the counts may be out of date
 
 It fetches from GitHub first so the counts are current; `--no-fetch` skips that
-(faster, or when offline). It never changes any files. Handy before leaving
+(faster, or when offline). It fetches 8 repositories at a time, asking nothing; one
+that needs a password, a passphrase or a new host key is then fetched again on its
+own, where it can be typed. It never changes any files. Handy before leaving
 work, to see what was forgotten.
 
 ## git_pull_all.sh
@@ -94,7 +96,8 @@ git_pull_all.sh [folder]
 ```
 
 Fetches every repository and moves it forward to match GitHub (`git merge --ff-only`,
-as `git pull --ff-only` does), so a repository is never merged or rebased.
+as `git pull --ff-only` does), so a repository is never merged or rebased. The
+fetching comes first, 8 repositories at a time, as in `git_status_all.sh`.
 
 When that fails (local commits that are not on GitHub, or uncommitted changes
 that clash with the incoming ones), it lists what would be lost and asks:
@@ -141,7 +144,8 @@ git_actions_all.sh [owner ...] [--problems]
 ```
 
 Asks GitHub for the repositories of each `owner`, a user or an organisation
-(default `sedzinfo`; archived ones are left out), and shows the latest run of
+(default `sedzinfo`; archived ones are left out), and, 8 repositories at a time,
+for their runs. It shows the latest run of
 each of their workflows, one line each, with its result, branch, date and link:
 
 - **failure**, **cancelled**, **timed_out**, ...: first, these are the problems

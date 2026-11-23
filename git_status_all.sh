@@ -22,15 +22,20 @@ ask_folder
 attention=0
 
 shopt -s dotglob
-for dir in "$root"/*/; do
-  [ -e "$dir/.git" ] || continue
+# the repositories; unless --no-fetch, all fetched first, 8 at a time
+repos=()
+for dir in "$root"/*/; do [ -e "$dir/.git" ] && repos+=("$dir"); done
+[ $fetch -eq 1 ] && fetch_all "${repos[@]}"
+
+for dir in "${repos[@]}"; do
   name=$(basename "$dir")
   # the branch, also in a repository without commits yet
   branch=$(git -C "$dir" symbolic-ref -q --short HEAD) || branch=HEAD
 
   notes=()
-  if [ $fetch -eq 1 ] && ! git -C "$dir" fetch -q 2> /dev/null; then
-    notes+=("${yellow}not fetched${reset}")
+  if [ $fetch -eq 1 ]; then
+    fetch_result "$dir"
+    [ "$fetched" -eq 1 ] || notes+=("${yellow}not fetched${reset}")
   fi
   changed=$(git -C "$dir" status --porcelain | wc -l)
   if [ "$changed" -gt 0 ]; then
