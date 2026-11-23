@@ -14,7 +14,7 @@
 
 # the functions that several scripts share
 # shellcheck source-path=SCRIPTDIR
-. "$(dirname "${BASH_SOURCE[0]}")/lib/helpers.sh" || exit 1
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/helpers.sh" || exit 1
 
 args=("$@")
 size=1G

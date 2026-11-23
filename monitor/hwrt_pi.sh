@@ -5,7 +5,7 @@
 
 # the functions that several scripts share
 # shellcheck source-path=SCRIPTDIR
-. "$(dirname "${BASH_SOURCE[0]}")/lib/helpers.sh" || exit 1
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/helpers.sh" || exit 1
 
 # one line in three aligned columns: name, reading, details
 row() { printf "%-15s %10s   %s\n" "$1" "$2" "$3"; }

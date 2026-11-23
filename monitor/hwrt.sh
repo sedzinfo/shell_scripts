@@ -1,7 +1,7 @@
 #!/bin/bash
 # the functions that several scripts share
 # shellcheck source-path=SCRIPTDIR
-. "$(dirname "${BASH_SOURCE[0]}")/lib/helpers.sh" || exit 1
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/helpers.sh" || exit 1
 
 # the temperature or fan lines of sensors in three aligned columns:
 # name, reading, limits (the limits' own continuation lines go under the limits)
