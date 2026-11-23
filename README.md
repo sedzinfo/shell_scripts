@@ -40,9 +40,9 @@ NVIDIA's are never offered.
 | [`sites_check.sh`](sites_check.sh) | Checks that the websites, every page of their sitemaps, and the Shiny apps they link to are up, and that each app starts without errors | No |
 | [`git_large_files_all.sh`](git_large_files_all.sh) | Finds files that GitHub would refuse (over 100 MB) or warn about (over 50 MB), files that should be in Git LFS, and LFS files never downloaded | No |
 | [`git_lfs_prune_all.sh`](git_lfs_prune_all.sh) | Frees the space of the local copies of old Git LFS versions (`git lfs prune`), which GitHub keeps | Deletes them, after asking |
-| [`hwrt.sh`](hwrt.sh) | Live view of RAM, CPU speed, GPU, temperatures and fans; beeps when RAM is low | No |
-| [`hwrt_pi.sh`](hwrt_pi.sh) | The same for a Raspberry Pi, plus the power supply (under-voltage, throttling) | No |
-| [`disk_speed.sh`](disk_speed.sh) | Read and write speed of every drive, on a PC or a Raspberry Pi | Only a temporary test file, deleted at the end |
+| [`hwrt.sh`](monitor/hwrt.sh) | Live view of RAM, CPU speed, GPU, temperatures and fans; beeps when RAM is low | No |
+| [`hwrt_pi.sh`](monitor/hwrt_pi.sh) | The same for a Raspberry Pi, plus the power supply (under-voltage, throttling) | No |
+| [`disk_speed.sh`](monitor/disk_speed.sh) | Read and write speed of every drive, on a PC or a Raspberry Pi | Only a temporary test file, deleted at the end |
 | [`r_shiny_update_manifests.sh`](r_shiny_update_manifests.sh) | Regenerates `manifest.json` of the Shiny apps for Posit Connect | Rewrites `manifest.json` only, after asking |
 | [`r_manifest_check_all.sh`](r_manifest_check_all.sh) | Checks that the `manifest.json` of every Shiny app lists every file the app needs, and only files that are on GitHub | No |
 | [`r_install_packages.sh`](r_install_packages.sh) | Installs the system and R packages a repository needs | Installs, after asking |
